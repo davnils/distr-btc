@@ -44,7 +44,7 @@ data ProxyResponse
  = MarketReply
    {
      _status                  :: Bool,
-     _status_reply            :: Maybe StatusReplyDetails
+     _market_reply            :: Maybe MarketReplyDetails
    }
  | StatusReply
    {
@@ -58,10 +58,10 @@ data ProxyResponse
 
 instance Binary ProxyResponse
 
-data StatusReplyDetails
- = StatusReplyDetails
+data MarketReplyDetails
+ = MarketReplyDetails
    {
-     _response_time           :: Int,
+     _response_time           :: MarketTimeout,
      _trades                  :: [MarketTrade],
      _orderBook               :: [MarketOrderBook]
    }
