@@ -1,4 +1,4 @@
-{-# Language ConstraintKinds, DeriveGeneric, RankNTypes, TypeFamilies #-}
+{-# Language ConstraintKinds, RankNTypes, TypeFamilies #-}
 
 module ProxyLayer where
 
@@ -10,6 +10,7 @@ import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Trans
 import Control.Proxy
+import Control.Proxy.Trans.State
 import Control.Proxy.Binary
 import Control.Proxy.Concurrent
 import Control.Proxy.Safe
@@ -17,29 +18,15 @@ import qualified Control.Proxy.TCP           as N
 import qualified Control.Monad.Reader        as R
 import qualified Data.Map                    as M
 import qualified Data.Set                    as S
-import Data.Binary
+import Data.Binary (Binary)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word16)
-import GHC.Generics (Generic)
 import Network.Socket (Socket)
 import Network.Socket.Internal (SockAddr(..))
 import System.Random (randomIO)
 
-data ProxyRequest
- = Blargh
- | Blargh2
- deriving Generic
-
-instance Binary ProxyRequest
-
-data ProxyResponse
- = Blargha
- | Blargha2
-
-type MProxyT mt mb = (MonadIO mb, mt ~ R.ReaderT (TVar (M.Map WorkerIdentifier WorkerThread)) mb)
-type WorkerIdentifier = (SockAddr, Word16)
-type WorkerThread = Input (Maybe (ProxyRequest, Input (Maybe ProxyResponse)))
-type MarketTimeout = Int
+import Types
+import Utils
 
 readyLimit :: Int
 readyLimit = 1
@@ -74,50 +61,21 @@ withLayer routine = do
         modifyTVar threadState $ M.insert (addr, 0) localInput
 
       -- handle requests until completion
-      return $ runProxy $
-          recvS localOutput
-        >-> terminateD
-        >-> mapD fst
-        >-> writePacket socket
+      -- return $ runProxy $ runEitherK $ runEitherK $ evalStateK [] $
+       -- liftP . liftP (recvS localOutput >-> terminateD >-> mapD fst >-> writePacket socket)
         -- >-> readPacket
         -- >-> buildResponse
 
+        -- needs to split pipeline into two separate parts:
+        -- (1) transmit chain
+        -- (2) recieve chain
+        -- these are also enabled by a separate runProxy call
+        -- sort of like :
+        -- (writeSocket, data) <- recv
+        -- runProxy $ 
+        -- runProxy $
+
       return undefined
-
-      -- readPacket = N.socketReadTimeoutD proxyTimeout socket >-> decode
-
-ignoreProxy
-  :: (Monad m, ProxyInternal p)
-  => p a' a b' b m r
-  -> p a' a b' b m ()
-ignoreProxy p = (?>=) p $ \_ -> return_P ()
-
-writePacket
-  :: (Binary x, Proxy p)
-  => Socket
-  -> ()
-  -> p () x () B.ByteString IO ()
-writePacket socket =
-      encodeD
-  >-> ignoreProxy . runEitherP . N.socketWriteTimeoutD proxyTimeout socket
-
-terminateD :: (Monad m, Proxy p) => () -> Pipe p (Maybe a) a m ()
-terminateD () = runIdentityP go
-  where
-  go = do
-    val <- request ()
-    case val of
-      Just a -> respond a >> go
-      Nothing -> return ()
-
--- todo: replace
-onJust
-  :: Monad m
-  => Maybe a
-  -> (a -> m (Maybe b))
-  -> m (Maybe b)
-onJust Nothing _ = return Nothing
-onJust (Just val) f = f val
 
 query
   :: MProxyT mt mb
