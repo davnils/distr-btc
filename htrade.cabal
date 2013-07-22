@@ -1,0 +1,77 @@
+name:                htrade
+version:             0.1.0.0
+synopsis:            Bitcoin trading platform.
+homepage:            https://github.com/davnils/htrade
+license:             BSD3
+license-file:        LICENSE
+author:              David Nilsson
+maintainer:          nilsson.dd+htrade@gmail.com
+category:            HTrade
+build-type:          Simple
+cabal-version:       >=1.8
+
+library
+  hs-source-dirs:    src
+  exposed-modules:   HTrade.Shared.Utils, HTrade.Shared.Types
+  ghc-options:       -Wall
+  build-depends:     base == 4.*,
+                     pipes == 3.3.*,
+                     pipes-binary == 0.1.*,
+                     pipes-network == 0.5.*,
+                     pipes-safe == 1.2.*,
+                     binary == 0.7.*,
+                     bytestring == 0.9.*,
+                     network == 2.4.*,
+                     stm == 2.4.*,
+                     pipes-concurrency == 1.2.*,
+                     mtl == 2.1.*,
+                     containers == 0.4.*,
+                     ghc-prim == 0.2.*,
+                     async == 2.0.*,
+                     random == 1.0.*
+
+executable htrade-backend
+  hs-source-dirs:    src
+  main-is:           HTrade/Backend/Backend.hs
+  ghc-options:       -O2 -Wall
+  
+  build-depends:     base == 4.*,
+                     pipes == 3.3.*,
+                     pipes-binary == 0.1.*,
+                     pipes-network == 0.5.*,
+                     pipes-safe == 1.2.*,
+                     binary == 0.7.*,
+                     bytestring == 0.9.*,
+                     network == 2.4.*,
+                     stm == 2.4.*,
+                     pipes-concurrency == 1.2.*,
+                     mtl == 2.1.*,
+                     containers == 0.4.*,
+                     ghc-prim == 0.2.*,
+                     async == 2.0.*,
+                     random == 1.0.*
+
+executable htrade-proxy
+  hs-source-dirs:    src
+  main-is:           HTrade/Proxy/Proxy.hs
+  ghc-options:       -O2 -Wall
+  
+  build-depends:     base == 4.*,
+                     pipes == 3.3.*,
+                     pipes-binary == 0.1.*,
+                     pipes-network == 0.5.*,
+                     pipes-safe == 1.2.*,
+                     binary == 0.7.*,
+                     bytestring == 0.9.*,
+                     network == 2.4.*,
+                     stm == 2.4.*,
+                     pipes-concurrency == 1.2.*,
+                     mtl == 2.1.*,
+                     containers == 0.4.*,
+                     ghc-prim == 0.2.*,
+                     async == 2.0.*,
+                     random == 1.0.*
+
+source-repository head
+  type: git
+  location: https://github.com/davnils/htrade.git

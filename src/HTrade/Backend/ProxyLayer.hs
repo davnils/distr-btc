@@ -1,6 +1,6 @@
 {-# Language ConstraintKinds, RankNTypes, TypeFamilies #-}
 
-module ProxyLayer where
+module HTrade.Backend.ProxyLayer where
 
 import qualified Data.ByteString.Char8       as B
 import Control.Applicative
@@ -25,8 +25,8 @@ import Network.Socket (Socket)
 import Network.Socket.Internal (SockAddr(..))
 import System.Random (randomIO)
 
-import Types
-import Utils
+import HTrade.Shared.Types
+import HTrade.Shared.Utils
 
 readyLimit :: Int
 readyLimit = 1

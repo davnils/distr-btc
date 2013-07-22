@@ -1,4 +1,4 @@
-module Utils where
+module HTrade.Shared.Utils where
 
 import Control.Proxy
 import Control.Proxy.Binary
@@ -9,7 +9,7 @@ import qualified Data.ByteString.Char8       as B
 import Network.Socket (Socket)
 import Network.Socket.Internal (SockAddr(..))
 
-import Types
+import HTrade.Shared.Types
 
 readPacket socket timeout' =
       N.socketReadTimeoutS timeout' 4096 socket

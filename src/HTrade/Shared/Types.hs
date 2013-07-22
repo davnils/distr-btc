@@ -1,6 +1,6 @@
 {-# Language ConstraintKinds, DeriveGeneric #-}
 
-module Types where
+module HTrade.Shared.Types where
 
 import Control.Concurrent.STM
 import Control.Proxy
