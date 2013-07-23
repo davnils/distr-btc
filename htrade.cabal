@@ -28,9 +28,10 @@ library
                      containers == 0.4.*,
                      ghc-prim == 0.2.*,
                      async == 2.0.*,
-                     random == 1.0.*
+                     random == 1.0.*,
+                     time == 1.4.*
 
-executable htrade-backend
+-- executable htrade-backend
   hs-source-dirs:    src
   main-is:           HTrade/Backend/Backend.hs
   ghc-options:       -O2 -Wall
@@ -70,7 +71,10 @@ executable htrade-proxy
                      containers == 0.4.*,
                      ghc-prim == 0.2.*,
                      async == 2.0.*,
-                     random == 1.0.*
+                     random == 1.0.*,
+                     http-streams == 0.6.*,
+                     errors == 1.4.*,
+                     time == 1.4.*
 
 source-repository head
   type: git

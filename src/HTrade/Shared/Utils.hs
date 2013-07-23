@@ -11,9 +11,9 @@ import Network.Socket.Internal (SockAddr(..))
 
 import HTrade.Shared.Types
 
-readPacket socket timeout' =
-      N.socketReadTimeoutS timeout' 4096 socket
-  >-> liftP . (mapD Just >-> decodeD >-> printD)
+{- readPacket socket =
+      N.socketReadS 4096 socket
+  >-> liftP . (mapD Just >-> decodeD) -}
 
 ignoreProxy
   :: (Monad m, ProxyInternal p)
@@ -21,7 +21,7 @@ ignoreProxy
   -> p a' a b' b m ()
 ignoreProxy p = (?>=) p $ \_ -> return_P ()
 
-writePacket
+{- writePacket
   :: (Binary x, Proxy p)
   => Socket
   -> Int
@@ -29,7 +29,7 @@ writePacket
   -> p () x () B.ByteString IO ()
 writePacket socket timeout' =
       encodeD
-  >-> ignoreProxy . runEitherP . N.socketWriteTimeoutD timeout' socket
+  >-> ignoreProxy . runEitherP . N.socketWriteTimeoutD timeout' socket -}
 
 terminateD :: (Monad m, Proxy p) => () -> Pipe p (Maybe a) a m ()
 terminateD () = runIdentityP go

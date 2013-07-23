@@ -16,8 +16,8 @@ import GHC.Generics (Generic)
 import Network.Socket.Internal (SockAddr(..))
 
 type ProxyVersion = (Int, Int)
-type MarketTrade = Int -- TODO
-type MarketOrderBook = Int -- TODO
+type MarketTrade = B.ByteString -- TODO
+type MarketOrderBook = B.ByteString -- TODO
 
 data ProxyRequest
  = MarketRequest
@@ -26,7 +26,7 @@ data ProxyRequest
      _targetPath              :: B.ByteString,
      _targetTradePath         :: B.ByteString,
      _targetOrderBookPath     :: B.ByteString,
-     _timeout                 :: MarketTimeout
+     _timeout                 :: MicroSeconds
    }
  | StatusRequest
    {
@@ -61,15 +61,16 @@ instance Binary ProxyResponse
 data MarketReplyDetails
  = MarketReplyDetails
    {
-     _response_time           :: MarketTimeout,
-     _trades                  :: [MarketTrade],
-     _orderBook               :: [MarketOrderBook]
+     _response_time           :: MicroSeconds,
+     _trades                  :: MarketTrade,
+     _orderBook               :: MarketOrderBook
    }
  deriving (Eq, Generic, Show)
 
-instance Binary StatusReplyDetails
+instance Binary MarketReplyDetails
 
 type MProxyT mt mb = (MonadIO mb, mt ~ R.ReaderT (TVar (M.Map WorkerIdentifier WorkerThread)) mb)
 type WorkerIdentifier = (SockAddr, Word16)
 type WorkerThread = Input (Maybe (ProxyRequest, Input (Maybe ProxyResponse)))
-type MarketTimeout = Int
+type MicroSeconds = Int
+type ResponseTime = Int
