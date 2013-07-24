@@ -74,7 +74,8 @@ executable htrade-proxy
                      random == 1.0.*,
                      http-streams == 0.6.*,
                      errors == 1.4.*,
-                     time == 1.4.*
+                     time == 1.4.*,
+                     monoid-statistics == 0.3.*
 
 source-repository head
   type: git

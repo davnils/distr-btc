@@ -40,6 +40,7 @@ data ProxyRequest
 
 instance Binary ProxyRequest
 
+-- TODO: Convert to CamelCase
 data ProxyResponse
  = MarketReply
    {
@@ -49,10 +50,10 @@ data ProxyResponse
  | StatusReply
    {
      _version                 :: ProxyVersion,
-     _mem_load                :: Float,
-     _cpu_load                :: Float,
-     _response_mean           :: Float,
-     _response_std            :: Float
+     _mem_load                :: Double,
+     _cpu_load                :: Double,
+     _response_mean           :: Double,
+     _response_std            :: Double
    }
  deriving (Eq, Generic, Show)
 
