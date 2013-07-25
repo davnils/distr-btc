@@ -54,6 +54,9 @@ data ProxyResponse
      _responseMean            :: Double,
      _responseStd             :: Double
    }
+ | AcknowledgementReply
+   {
+   }
  deriving (Eq, Generic, Show)
 
 instance Binary ProxyResponse

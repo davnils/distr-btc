@@ -100,8 +100,9 @@ handleRequest (MarketRequest site path trade order timeout) = do
 
 handleRequest StatusRequest = buildStatusReply
 
--- TODO: Implement and add acknowledgement packet, can be generic "ReplyAcknowledged".
-handleRequest (ReloadRequest performUpgrade reboot) = undefined
+handleRequest (ReloadRequest performUpgrade reboot) = do
+  -- TODO: Implement upgrade and reboot actions
+  return AcknowledgementReply
 
 -- | Fetch market data from the given site and path, while respecting the given
 --   timeout value. Will return Nothing if the timeout was reached or a
@@ -139,7 +140,6 @@ getMarket site tradePath orderPath allowance = do
     H.sendRequest conn req H.emptyBody
     H.receiveResponse conn H.concatHandler' 
 
--- TODO: Implement CPU and mem load
 -- | Build a status reply containing runtime statistics.
 buildStatusReply :: MWorker ProxyResponse
 buildStatusReply = do
@@ -147,10 +147,11 @@ buildStatusReply = do
   let responseMean   = MSN.calcMean   $ (MS.evalStatistic samples :: MSN.Mean)
       responseStddev = MSN.calcStddev $ (MS.evalStatistic samples :: MSN.Variance)
 
+  -- TODO: Implement CPU and mem load
   return $ StatusReply
     proxyVersion 
-    undefined
-    undefined
+    0.0
+    0.0
     responseMean
     responseStddev
 
