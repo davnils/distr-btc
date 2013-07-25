@@ -93,7 +93,7 @@ handleRequest (MarketRequest site path trade order timeout) = do
   case market of
     Nothing -> return $ MarketReply False market
     Just m  -> do
-      modify $ \s -> S.insert (scaleSample $ _response_time m) s
+      modify $ \s -> S.insert (scaleSample $ _responseTime m) s
       return $ MarketReply True market
   where
   scaleSample sample = (realToFrac sample / realToFrac timerPrecision)
