@@ -2,7 +2,9 @@
 
 module HTrade.Backend.ProxyLayer where
 
+import qualified Data.Binary                 as BI
 import qualified Data.ByteString.Char8       as B
+import qualified Data.ByteString.Lazy.Char8  as BL
 import Control.Applicative
 import qualified Control.Concurrent.Async    as C
 import Control.Concurrent (threadDelay)
@@ -10,7 +12,7 @@ import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Trans
 import Control.Proxy
-import Control.Proxy.Trans.State
+import qualified Control.Proxy.Trans.State   as PS
 import Control.Proxy.Binary
 import Control.Proxy.Concurrent
 import Control.Proxy.Safe
@@ -21,6 +23,7 @@ import qualified Data.Set                    as S
 import Data.Binary (Binary)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word16)
+import qualified Network.Simple.TCP          as NS
 import Network.Socket (Socket)
 import Network.Socket.Internal (SockAddr(..))
 import System.Random (randomIO)
@@ -31,56 +34,115 @@ import HTrade.Shared.Utils
 readyLimit :: Int
 readyLimit = 1
 
-defaultTimeout :: MarketTimeout
+defaultTimeout :: MicroSeconds
 defaultTimeout = 1000000
 
-retryDelay :: MarketTimeout
+retryDelay :: MicroSeconds
 retryDelay = 1000
 
 proxyTimeout :: Int
 proxyTimeout = 300000
 
+-- | Main entry point when interfacing with the proxy layer.
+--   Accepts an computation to be evaluated over the proxy transformer.
+--   Initially a thread pool is created and incoming connections are
+--   accepted from the proxy layer. Each node is associated with a pipeline
+--   which transfers data between queries and the proxy node.
+--
+--   Typically this function will wrap almost all computation.
 withLayer
   :: MProxyT mt mb
   => mt a
   -> mb a
 withLayer routine = do
   threadState <- liftIO $ newTVarIO M.empty
-  liftIO . C.async $ listener threadState
-  R.runReaderT routine threadState
+  listenID <- liftIO . C.async $ listener threadState
+  result <- R.runReaderT routine threadState
 
-  -- kill all the threads(?) can also message Nothing to all pipes and wait
+  -- cleanup (every connection is closed through 'serve')
+  -- an alternative way is to ~ map (send Nothing) threadState
+  liftIO $ C.cancel listenID
+  return result
 
   where
   listener threadState =
     -- start accepting connections
     N.serve N.HostAny "1111" $ \(socket, addr) -> do
       -- serve each proxy node in a separate thread
-      (localInput, localOutput) <- liftIO $ spawn Unbounded
-      atomically $ do
-        modifyTVar threadState $ M.insert (addr, 0) localInput
+      let threadID = (addr, 0)
+      (localInput, localOutput) <- spawn Unbounded
+      atomically $
+        modifyTVar threadState $ M.insert threadID localInput
 
-      -- handle requests until completion
-      -- return $ runProxy $ runEitherK $ runEitherK $ evalStateK [] $
-       -- liftP . liftP (recvS localOutput >-> terminateD >-> mapD fst >-> writePacket socket)
-        -- >-> readPacket
-        -- >-> buildResponse
+      -- TODO: Add timeouts to all socket handling
 
-        -- needs to split pipeline into two separate parts:
-        -- (1) transmit chain
-        -- (2) recieve chain
-        -- these are also enabled by a separate runProxy call
-        -- sort of like :
-        -- (writeSocket, data) <- recv
-        -- runProxy $ 
-        -- runProxy $
+      -- execute pipeline which:
+      -- (1) reads a local request
+      -- (2) submits the corresponding request packet
+      -- (2) retrieves the result and notifies the original query
+      tryAny . runProxy . PS.runStateK undefined $ 
+            recvS localOutput
+        >-> terminateD
+        >-> saveInputD
+        >-> encodeD
+        >-> N.socketWriteD socket
+        >-> getPacketD socket
+        >-> saveResponseD
 
-      return undefined
+      -- cleanup thread pool upon termination
+      atomically $
+        modifyTVar threadState $ M.delete threadID
+      performGC
 
+saveInputD
+  :: (Monad m, Proxy p)
+  => a
+  -> PS.StateP s p () (q, s) a q m r
+saveInputD _ = do
+  (req, input) <- request ()
+  PS.put input
+  respond req >>= saveInputD
+
+getPacketD
+  :: (Binary b, MonadIO m, Proxy p)
+  => Socket
+  -> b'
+  -> p () x b' b m r
+getPacketD socket = runIdentityK (go socket)
+  where
+  go socket _ = do
+    _ <- request ()
+    liftIO (retrievePacket B.empty) >>= respond >>= go socket
+
+  retrievePacket acc = do
+    Just rx <- NS.recv socket 4096
+    let total = B.append acc rx
+    case BI.decodeOrFail (BL.fromChunks [total]) of
+      Right (_, _, obj) -> return obj
+      Left _ -> retrievePacket total
+
+saveResponseD
+  :: (MonadIO m, Proxy p)
+  => a
+  -> PS.StateP WorkerThreadQueryState p () ProxyResponse a ProxyResponse m r
+saveResponseD _ = do
+  reply <- request ()
+  output <- PS.get
+  liftIO . atomically $ send output $ Just reply
+  respond reply >>= saveResponseD
+
+-- | Execute a query on the proxy layer.
+--   If no proxy node is given then a random sample is taken from the pool.
+--
+--   It is considered to always be possible to retrieve a valid response from
+--   some node.
+--
+--   TODO: Rework failures to be explicit on the type level
+--   (invalid request or insufficient worker pool)
 query
   :: MProxyT mt mb
   => Maybe WorkerIdentifier
-  -> Maybe MarketTimeout
+  -> Maybe MicroSeconds
   -> ProxyRequest
   -> mt ProxyResponse
 query addr' timeout' req = do
@@ -105,12 +167,16 @@ query addr' timeout' req = do
         send remote $ Just (req, localInput)
         liftM join $ recv localOutput
 
+-- | Check if the number of connected proxy nodes have reached the critical limit.
+--   It is suitable to call this function repeatedely until success during
+--   initialization.
 ready
   :: MProxyT mt mb
   => mt Bool
 ready = R.ask >>= \threadState -> liftIO . atomically $
   (> readyLimit) . M.size <$> readTVar threadState
 
+-- | Remove the specified node from the proxy layer.
 removeNode
   :: MProxyT mt mb
   => WorkerIdentifier
@@ -119,7 +185,7 @@ removeNode addr = R.ask >>= \threadState -> liftIO . atomically $ do
   entry <- M.lookup addr <$> readTVar threadState
   modifyTVar threadState $ M.delete addr
   case entry of
-    Just chan -> void $ send chan Nothing
+    Just chan -> always $ send chan Nothing
     Nothing -> return ()
 
 -- | Maps a function over the set of connected proxies.
@@ -136,6 +202,7 @@ mapLayer f = do
   mapped <- mapM f addrs
   return . M.fromList $ zip addrs mapped
 
+-- | Retrieve a randomly sampled node from the worker pool.
 sampleNode
   :: MProxyT mt mb
   => mt (Maybe WorkerIdentifier)

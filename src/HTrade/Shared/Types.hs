@@ -74,6 +74,8 @@ instance Binary MarketReplyDetails
 
 type MProxyT mt mb = (MonadIO mb, mt ~ R.ReaderT (TVar (M.Map WorkerIdentifier WorkerThread)) mb)
 type WorkerIdentifier = (SockAddr, Word16)
-type WorkerThread = Input (Maybe (ProxyRequest, Input (Maybe ProxyResponse)))
+type WorkerThread = Input (Maybe (ProxyRequest, WorkerThreadQueryState))
+type WorkerThreadQueryState = Input (Maybe ProxyResponse)
+
 type MicroSeconds = Int
 type ResponseTime = Int
