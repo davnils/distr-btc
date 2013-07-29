@@ -43,6 +43,9 @@ retryDelay = 1000
 proxyTimeout :: Int
 proxyTimeout = 300000
 
+maxProbes :: Int
+maxProbes = 10
+
 -- | Main entry point when interfacing with the proxy layer.
 --   Accepts an computation to be evaluated over the proxy transformer.
 --   Initially a thread pool is created and incoming connections are
@@ -134,32 +137,26 @@ saveResponseD _ = do
 -- | Execute a query on the proxy layer.
 --   If no proxy node is given then a random sample is taken from the pool.
 --
---   It is considered to always be possible to retrieve a valid response from
---   some node.
---
---   TODO: Rework failures to be explicit on the type level
---   (invalid request or insufficient worker pool)
+--   A non-existant node or an empty pool will result in an error value.
 query
   :: MProxyT mt mb
   => Maybe WorkerIdentifier
   -> Maybe MicroSeconds
   -> ProxyRequest
-  -> mt ProxyResponse
+  -> mt (Maybe ProxyResponse)
 query addr' timeout' req = do
   let timeout = fromMaybe defaultTimeout timeout'
   let getWorker = fromMaybe sampleNode $ return . Just <$> addr'
 
-  -- iterate until a response is retrieved
-  result <- forM [1..] $ \_ -> do
-    worker <- getWorker
-    case worker of
-      Nothing -> liftIO (threadDelay retryDelay) >> return Nothing
-      Just addr -> runQuery addr
+  -- iterate until a response is retrieved or the limit is reached
+  result <- forM [1..maxProbes] $ \_ -> do
+    getWorker >>= flip onJust runQuery
 
-  return $ fromMaybe (error "Inconsistent pool") (msum result)
+  -- extract the first valid response (lazily loaded)
+  return $ msum result
 
   where
-  runQuery :: MProxyT mt mb => WorkerIdentifier -> mt (Maybe ProxyResponse)
+  -- run a query on the given address, may fail with Nothing
   runQuery addr = do
     thread <- R.ask >>= liftIO . atomically . liftM (M.lookup addr) . readTVar
     (localInput, localOutput) <- liftIO $ spawn Unbounded
