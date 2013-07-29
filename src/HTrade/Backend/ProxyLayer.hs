@@ -68,11 +68,10 @@ withLayer routine = do
   where
   listener threadState =
     -- start accepting connections
-    N.serve N.HostAny "1111" $ \(socket, addr) -> do
+    N.serve N.HostAny (show backendPort) $ \(socket, addr) -> do
       -- serve each proxy node in a separate thread
 
-      --TODO: initialize proper thread ID
-      let threadID = (addr, 0)
+      let threadID = addr
       (localInput, localOutput) <- spawn Unbounded
       atomically $
         modifyTVar threadState $ M.insert threadID localInput

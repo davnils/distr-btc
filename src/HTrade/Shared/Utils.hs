@@ -13,6 +13,9 @@ import Network.Socket.Internal (SockAddr(..))
 
 import HTrade.Shared.Types
 
+backendPort :: Int
+backendPort = 1111
+
 ignoreProxy
   :: (Monad m, ProxyInternal p)
   => p a' a b' b m r
