@@ -27,6 +27,7 @@ import qualified Network.Simple.TCP          as NS
 import Network.Socket (Socket)
 import Network.Socket.Internal (SockAddr(..))
 import System.Random (randomIO)
+import System.Timeout (timeout)
 
 import HTrade.Shared.Types
 import HTrade.Shared.Utils
@@ -37,11 +38,8 @@ readyLimit = 1
 defaultTimeout :: MicroSeconds
 defaultTimeout = 1000000
 
-retryDelay :: MicroSeconds
-retryDelay = 1000
-
 proxyTimeout :: Int
-proxyTimeout = 300000
+proxyTimeout = 3000000
 
 maxProbes :: Int
 maxProbes = 10
@@ -72,23 +70,23 @@ withLayer routine = do
     -- start accepting connections
     N.serve N.HostAny "1111" $ \(socket, addr) -> do
       -- serve each proxy node in a separate thread
+
+      --TODO: initialize proper thread ID
       let threadID = (addr, 0)
       (localInput, localOutput) <- spawn Unbounded
       atomically $
         modifyTVar threadState $ M.insert threadID localInput
 
-      -- TODO: Add timeouts to all socket handling
-
       -- execute pipeline which:
       -- (1) reads a local request
       -- (2) submits the corresponding request packet
       -- (2) retrieves the result and notifies the original query
-      tryAny . runProxy . PS.runStateK undefined $ 
+      tryAny . runProxy . runEitherK . PS.runStateK undefined $ 
             recvS localOutput
         >-> terminateD
         >-> saveInputD
         >-> encodeD
-        >-> N.socketWriteD socket
+        >-> liftP . N.socketWriteTimeoutD proxyTimeout socket
         >-> getPacketD socket
         >-> saveResponseD
 
@@ -118,7 +116,7 @@ getPacketD socket = runIdentityK (go socket)
     liftIO (retrievePacket B.empty) >>= respond >>= go socket
 
   retrievePacket acc = do
-    Just rx <- NS.recv socket 4096
+    Just rx <- fmap join . timeout proxyTimeout $ NS.recv socket 4096
     let total = B.append acc rx
     case BI.decodeOrFail (BL.fromChunks [total]) of
       Right (_, _, obj) -> return obj
@@ -187,7 +185,7 @@ removeNode addr = R.ask >>= \threadState -> liftIO . atomically $ do
 
 -- | Maps a function over the set of connected proxies.
 --   The proxy identifier might not exist when the function executes since
---   there is snapshot taken of the set in the beginning.
+--   there is a snapshot taken of the set during initialization.
 --   This also implies that additional proxies may be added during execution.
 mapLayer
   :: MProxyT mt mb
@@ -200,6 +198,7 @@ mapLayer f = do
   return . M.fromList $ zip addrs mapped
 
 -- | Retrieve a randomly sampled node from the worker pool.
+--   Note: Not statistically uniform since it uses (`mod` poolSize).
 sampleNode
   :: MProxyT mt mb
   => mt (Maybe WorkerIdentifier)
