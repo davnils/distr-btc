@@ -1,6 +1,6 @@
 {-# Language NoMonomorphismRestriction, OverloadedStrings #-}
 
-module Main where
+module HTrade.Proxy.Proxy where
 
 import Control.Applicative ((<$>))
 import Control.Error (hush)
@@ -19,6 +19,7 @@ import qualified Data.Monoid.Statistics      as MS
 import qualified Data.Monoid.Statistics.Numeric         as MSN
 import qualified Data.Set                    as S
 import qualified Data.Time                   as T
+import Data.Word (Word16)
 import qualified Network.Http.Client         as H
 import Network.Socket (HostName, ServiceName, Socket)
 import System.Timeout (timeout)
@@ -43,7 +44,7 @@ timerPrecision = 10^6
 --   new connection being established.
 run
   :: HostName
-  -> ServiceName
+  -> Word16
   -> IO ()
 run host port = forever $
   blockExceptions $ runWorker host port >> return Nothing
@@ -51,9 +52,9 @@ run host port = forever $
 -- | Connect to backend using the provided details and launch pipeline.
 runWorker
   :: HostName
-  -> ServiceName
+  -> Word16
   -> IO ()
-runWorker host port = N.connect host port $ \(socket, _) -> do
+runWorker host port = N.connect host (show port) $ \(socket, _) -> do
   void $ runStateT (requestThread socket) defaultStats
 
 -- | Initiate pipeline connected to the given socket.
@@ -64,8 +65,8 @@ requestThread
 requestThread socket = void . runProxy . runStateK [] . runEitherK $ worker
   where
   worker = 
-        hoist lift . readPacket socket          -- read request from backend
-    >-> liftP . useD handleRequest              -- generate reply packet
+       hoist lift . readPacket socket          -- read request from backend
+    >-> liftP . mapMD handleRequest             -- generate reply packet
     >-> liftP . hoist lift . writePacket socket -- transmit reply to backend
 
   readPacket socket =
@@ -148,15 +149,9 @@ buildStatusReply = do
       responseStddev = MSN.calcStddev $ (MS.evalStatistic samples :: MSN.Variance)
 
   -- TODO: Implement CPU and mem load
-  return $ StatusReply
+  return $! StatusReply
     proxyVersion 
     0.0
     0.0
     responseMean
     responseStddev
-
-main :: IO ()
-main = run defaultHost defaultPort
-  where
-  defaultHost = "127.0.0.1"
-  defaultPort = "1234"

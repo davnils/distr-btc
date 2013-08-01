@@ -43,16 +43,16 @@ instance Binary ProxyRequest
 data ProxyResponse
  = MarketReply
    {
-     _status                  :: Bool,
+     _status                  :: !Bool,
      _marketReply             :: Maybe MarketReplyDetails
    }
  | StatusReply
    {
-     _version                 :: ProxyVersion,
-     _memLoad                 :: Double,
-     _cpuLoad                 :: Double,
-     _responseMean            :: Double,
-     _responseStd             :: Double
+     _version                 :: !ProxyVersion,
+     _memLoad                 :: !Double,
+     _cpuLoad                 :: !Double,
+     _responseMean            :: !Double,
+     _responseStd             :: !Double
    }
  | AcknowledgementReply
    {

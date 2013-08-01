@@ -38,8 +38,11 @@ readyLimit = 1
 defaultTimeout :: MicroSeconds
 defaultTimeout = 1000000
 
-proxyTimeout :: Int
-proxyTimeout = 3000000
+proxyTimeout :: MicroSeconds
+proxyTimeout = 10000000
+
+listenDelay :: MicroSeconds
+listenDelay = 500000
 
 maxProbes :: Int
 maxProbes = 10
@@ -53,11 +56,14 @@ maxProbes = 10
 --   Typically this function will wrap almost all computation.
 withLayer
   :: MProxyT mt mb
-  => mt a
+  => Word16
+  -> mt a
   -> mb a
-withLayer routine = do
-  threadState <- liftIO $ newTVarIO M.empty
+withLayer port routine = do
+  threadState <- liftIO . atomically $ newTVar M.empty
   listenID <- liftIO . C.async $ listener threadState
+
+  liftIO $ threadDelay listenDelay
   result <- R.runReaderT routine threadState
 
   -- cleanup (every connection is closed through 'serve')
@@ -68,18 +74,19 @@ withLayer routine = do
   where
   listener threadState =
     -- start accepting connections
-    N.serve N.HostAny (show backendPort) $ \(socket, addr) -> do
+    N.serve N.HostAny (show port) $ \(socket, addr) -> do
       -- serve each proxy node in a separate thread
 
       let threadID = addr
-      (localInput, localOutput) <- spawn Unbounded
+      (localInput, localOutput) <- spawn Single
       atomically $
-        modifyTVar threadState $ M.insert threadID localInput
+        modifyTVar' threadState $ M.insert threadID localInput
 
       -- execute pipeline which:
       -- (1) reads a local request
       -- (2) submits the corresponding request packet
       -- (2) retrieves the result and notifies the original query
+
       tryAny . runProxy . runEitherK . PS.runStateK undefined $ 
             recvS localOutput
         >-> terminateD
@@ -91,7 +98,7 @@ withLayer routine = do
 
       -- cleanup thread pool upon termination
       atomically $
-        modifyTVar threadState $ M.delete threadID
+        modifyTVar' threadState $ M.delete threadID
       performGC
 
 saveInputD
@@ -142,24 +149,28 @@ query
   -> ProxyRequest
   -> mt (Maybe ProxyResponse)
 query addr' timeout' req = do
-  let timeout = fromMaybe defaultTimeout timeout'
+  let timeout = fromMaybe defaultTimeout timeout' -- TODO: USE!
   let getWorker = fromMaybe sampleNode $ return . Just <$> addr'
 
   -- iterate until a response is retrieved or the limit is reached
-  result <- forM [1..maxProbes] $ \_ -> do
-    getWorker >>= flip onJust runQuery
-
-  -- extract the first valid response (lazily loaded)
-  return $ msum result
+  sendProbe getWorker maxProbes
 
   where
+  -- retrieve target proxy node and run query, may fail with Nothing
+  sendProbe _ 0 = return Nothing
+  sendProbe getWorker limit = do
+    result <- getWorker >>= flip onJust runQuery
+    case result of
+      Nothing    -> sendProbe getWorker (limit - 1)
+      res        -> return res
+
   -- run a query on the given address, may fail with Nothing
   runQuery addr = do
     thread <- R.ask >>= liftIO . atomically . liftM (M.lookup addr) . readTVar
-    (localInput, localOutput) <- liftIO $ spawn Unbounded
-    onJust thread $ \remote -> liftIO . atomically $ do
-        send remote $ Just (req, localInput)
-        liftM join $ recv localOutput
+    (localInput, localOutput) <- liftIO $ spawn Single
+    onJust thread $ \remote -> liftIO $ do
+      atomically . send remote $ Just (req, localInput)
+      atomically . liftM join $ recv localOutput
 
 -- | Check if the number of connected proxy nodes have reached the critical limit.
 --   It is suitable to call this function repeatedely until success during
@@ -177,7 +188,7 @@ removeNode
   -> mt ()
 removeNode addr = R.ask >>= \threadState -> liftIO . atomically $ do
   entry <- M.lookup addr <$> readTVar threadState
-  modifyTVar threadState $ M.delete addr
+  modifyTVar' threadState $ M.delete addr
   case entry of
     Just chan -> always $ send chan Nothing
     Nothing -> return ()
