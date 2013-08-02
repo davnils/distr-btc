@@ -41,7 +41,11 @@ verifyDataFlow = do
       "[*] Pool with " ++ show testPoolSize ++ " proxy nodes established."
 
     -- wait for full connectivity
-    liftIO . threadDelay $ 2 * 10^6
+    let waitLoop = do
+        nodes <- lift B.connectedNodes
+        when (nodes /= testPoolSize) $ liftIO (threadDelay $ 500 * 10^3) >> waitLoop
+
+    waitLoop
     lift B.ready >>= guard
 
     liftIO . putStrLn $

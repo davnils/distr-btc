@@ -178,8 +178,13 @@ query addr' timeout' req = do
 ready
   :: MProxyT mt mb
   => mt Bool
-ready = R.ask >>= \threadState -> liftIO . atomically $
-  (> readyLimit) . M.size <$> readTVar threadState
+ready = fmap (> readyLimit) connectedNodes
+
+-- | Retrieve the number of connected proxy nodes, based on a snapshot taken internally.
+connectedNodes
+  :: MProxyT mt mb
+  => mt Int
+connectedNodes = R.ask >>= fmap M.size . liftIO . readTVarIO
 
 -- | Remove the specified node from the proxy layer.
 removeNode
