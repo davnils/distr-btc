@@ -6,6 +6,8 @@ import Control.Concurrent.STM
 import Control.Proxy
 import Control.Proxy.Concurrent
 import Control.Monad
+import Control.Monad.Base
+-- import Control.Monad.Trans.Control
 import Control.Monad.Trans
 import qualified Control.Monad.Reader        as R
 import qualified Data.ByteString.Char8       as B
@@ -43,7 +45,6 @@ instance Binary ProxyRequest
 data ProxyResponse
  = MarketReply
    {
-     _status                  :: !Bool,
      _marketReply             :: Maybe MarketReplyDetails
    }
  | StatusReply
@@ -72,7 +73,7 @@ data MarketReplyDetails
 
 instance Binary MarketReplyDetails
 
-type MProxyT mt mb = (MonadIO mb, Functor mb, mt ~ R.ReaderT (TVar (M.Map WorkerIdentifier WorkerThread)) mb)
+type MProxyT mt mb = (MonadBase IO mb{-, MonadBaseControl IO mb-}, Functor mb, mt ~ R.ReaderT (TVar (M.Map WorkerIdentifier WorkerThread)) mb)
 type WorkerIdentifier = SockAddr
 type WorkerThread = Input (Maybe (ProxyRequest, WorkerThreadQueryState))
 type WorkerThreadQueryState = Input (Maybe ProxyResponse)

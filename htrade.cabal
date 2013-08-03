@@ -31,29 +31,36 @@ library
                      ghc-prim >= 0.2 && < 0.4,
                      async == 2.0.*,
                      random == 1.0.*,
-                     time == 1.4.*
+                     time == 1.4.*,
+                     transformers-base == 0.4.*,
+                     monad-control == 0.3.*
 
 executable htrade-backend
   hs-source-dirs:    src
   main-is:           HTrade/Backend/Backend.hs
+  other-modules:     HTrade.Backend.Types, HTrade.Backend.ProxyLayer
   ghc-options:       -O2 -Wall
   
   build-depends:     base == 4.*,
+                     async == 2.0.*,
+                     binary == 0.7.*,
+                     bytestring >= 0.9.2.1 && < 0.11,
+                     containers >= 0.4 && < 0.6,
+                     ghc-prim >= 0.2 && < 0.4,
+                     lifted-async == 0.1.*,
+                     monad-control == 0.3.*,
+                     mtl == 2.1.*,
+                     network == 2.4.*,
+                     network-simple == 0.2.*,
                      pipes == 3.3.*,
                      pipes-binary == 0.1.*,
                      pipes-network == 0.5.*,
                      pipes-safe == 1.2.*,
-                     binary == 0.7.*,
-                     bytestring >= 0.9.2.1 && < 0.11,
-                     network == 2.4.*,
-                     network-simple == 0.2.*,
-                     stm == 2.4.*,
                      pipes-concurrency == 1.2.*,
-                     mtl == 2.1.*,
-                     containers >= 0.4 && < 0.6,
-                     ghc-prim >= 0.2 && < 0.4,
-                     async == 2.0.*,
-                     random == 1.0.*
+                     random == 1.0.*,
+                     stm == 2.4.*,
+                     transformers == 0.3.*,
+                     transformers-base == 0.4.*
 
 executable htrade-proxy
   hs-source-dirs:    src
@@ -79,7 +86,9 @@ executable htrade-proxy
                      http-streams == 0.6.*,
                      errors == 1.4.*,
                      time == 1.4.*,
-                     monoid-statistics == 0.3.*
+                     monoid-statistics == 0.3.*,
+                     transformers-base == 0.4.*,
+                     monad-control == 0.3.*
 
 -- Test suites
 
@@ -109,7 +118,9 @@ Test-Suite test-proxylayer
                      random == 1.0.*,
                      stm == 2.4.*,
                      time == 1.4.*,
-                     transformers == 0.3.*
+                     transformers == 0.3.*,
+                     transformers-base == 0.4.*,
+                     monad-control == 0.3.*
 
 source-repository head
   type: git

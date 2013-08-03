@@ -1,7 +1,11 @@
+{-# Language FlexibleContexts #-}
+
 module HTrade.Shared.Utils where
 
 import qualified Control.Concurrent.Async    as A
+import Control.Concurrent (threadDelay)
 import qualified Control.Exception           as E
+import Control.Monad.Base
 import Control.Proxy
 import Control.Proxy.Binary
 import qualified Control.Proxy.TCP           as N
@@ -52,3 +56,16 @@ blockExceptions = fmap filterExp . tryAny
   filterExp (Left e) = case (E.fromException e :: Maybe E.AsyncException) of
     Nothing -> Nothing  -- synchronous exception occured, register.
     Just _ -> E.throw e -- asynchronous exception occured, re-throw.
+
+-- | Convert seconds to microseconds.
+seconds
+  :: Int
+  -> MicroSeconds
+seconds = (* 10^6)
+
+-- | Wait for specified amount of time (in microseconds).
+delay
+  :: MonadBase IO m
+  => MicroSeconds
+  -> m ()
+delay = liftBase . threadDelay

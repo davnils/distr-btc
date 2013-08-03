@@ -1,5 +1,6 @@
 module Main where
 
+import HTrade.Backend.MarketFetch
 import HTrade.Backend.ProxyLayer
 
 main :: IO ()

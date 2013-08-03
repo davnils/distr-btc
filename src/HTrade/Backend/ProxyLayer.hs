@@ -1,4 +1,4 @@
-{-# Language ConstraintKinds, RankNTypes, TypeFamilies #-}
+{-# Language ConstraintKinds, FlexibleContexts, RankNTypes, TypeFamilies #-}
 
 module HTrade.Backend.ProxyLayer where
 
@@ -10,6 +10,7 @@ import qualified Control.Concurrent.Async    as C
 import Control.Concurrent (threadDelay)
 import Control.Concurrent.STM
 import Control.Monad
+import Control.Monad.Base
 import Control.Monad.Trans
 import Control.Proxy
 import qualified Control.Proxy.Trans.State   as PS
@@ -60,15 +61,15 @@ withLayer
   -> mt a
   -> mb a
 withLayer port routine = do
-  threadState <- liftIO . atomically $ newTVar M.empty
-  listenID <- liftIO . C.async $ listener threadState
+  threadState <- liftBase . atomically $ newTVar M.empty
+  listenID <- liftBase . C.async $ listener threadState
 
-  liftIO $ threadDelay listenDelay
+  liftBase $ threadDelay listenDelay
   result <- R.runReaderT routine threadState
 
   -- cleanup (every connection is closed through 'serve')
   -- an alternative way is to ~ map (send Nothing) threadState
-  liftIO $ C.cancel listenID
+  liftBase $ C.cancel listenID
   return result
 
   where
@@ -166,9 +167,9 @@ query addr' timeout' req = do
 
   -- run a query on the given address, may fail with Nothing
   runQuery addr = do
-    thread <- R.ask >>= liftIO . atomically . liftM (M.lookup addr) . readTVar
-    (localInput, localOutput) <- liftIO $ spawn Single
-    onJust thread $ \remote -> liftIO $ do
+    thread <- R.ask >>= liftBase . atomically . liftM (M.lookup addr) . readTVar
+    (localInput, localOutput) <- liftBase $ spawn Single
+    onJust thread $ \remote -> liftBase $ do
       atomically . send remote $ Just (req, localInput)
       atomically . liftM join $ recv localOutput
 
@@ -184,14 +185,14 @@ ready = fmap (> readyLimit) connectedNodes
 connectedNodes
   :: MProxyT mt mb
   => mt Int
-connectedNodes = R.ask >>= fmap M.size . liftIO . readTVarIO
+connectedNodes = R.ask >>= fmap M.size . liftBase . readTVarIO
 
 -- | Remove the specified node from the proxy layer.
 removeNode
   :: MProxyT mt mb
   => WorkerIdentifier
   -> mt ()
-removeNode addr = R.ask >>= \threadState -> liftIO . atomically $ do
+removeNode addr = R.ask >>= \threadState -> liftBase . atomically $ do
   entry <- M.lookup addr <$> readTVar threadState
   modifyTVar' threadState $ M.delete addr
   case entry of
@@ -207,7 +208,7 @@ mapLayer
   => (WorkerIdentifier -> mt a)
   -> mt (M.Map WorkerIdentifier a)
 mapLayer f = do
-  threadMap <- R.ask >>= liftIO . atomically . readTVar
+  threadMap <- R.ask >>= liftBase . atomically . readTVar
   let addrs = M.keys threadMap
   mapped <- mapM f addrs
   return . M.fromList $ zip addrs mapped
@@ -217,8 +218,8 @@ mapLayer f = do
 sampleNode
   :: MProxyT mt mb
   => mt (Maybe WorkerIdentifier)
-sampleNode = R.ask >>= liftIO . atomically . readTVar >>= \workers -> do
-  rand <- liftIO randomIO
+sampleNode = R.ask >>= liftBase . atomically . readTVar >>= \workers -> do
+  rand <- liftBase randomIO
   let workerSize = M.size workers
   return $ case workerSize of
     0 -> Nothing
