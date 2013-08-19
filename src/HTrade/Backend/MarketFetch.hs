@@ -1,8 +1,7 @@
-{-# Language ConstraintKinds, FlexibleContexts, GADTs, Rank2Types, TypeFamilies #-}
+{-# Language GADTs #-}
 
 module HTrade.Backend.MarketFetch where
 
-import Control.Concurrent (threadDelay)
 import qualified Control.Concurrent.Async.Lifted as C
 import Control.Monad
 import Control.Monad.Base
@@ -24,10 +23,10 @@ data MarketState mt where
   MarketState
     ::
     {
-      _threadID :: MProxyT mt IO => Maybe (mt ()),
+      _threadID :: Maybe (PL.MProxy ()),
       _configuration :: Maybe MarketConfiguration
     }
-     -> MarketState mt
+    -> MarketState mt
 
 defaultMarketTimeout :: MicroSeconds
 defaultMarketTimeout = seconds 5
@@ -36,9 +35,8 @@ defaultMarketTimeout = seconds 5
 
 -- | TODO
 worker
-  :: MProxyT mt mb
-  => MarketConfiguration
-  -> mt ()
+  :: MarketConfiguration
+  -> PL.MProxy ()
 worker conf = forever $ do
   res <- PL.query Nothing (Just defaultMarketTimeout) marketReq
   case res of
@@ -58,24 +56,23 @@ worker conf = forever $ do
 
 -- | TODO
 marketDisconnect
-  :: MProxyT mt mb
-  => MarketConfiguration
-  -> mt ()
+  :: MarketConfiguration
+  -> PL.MProxy ()
 marketDisconnect _ = return ()
 
 -- | TODO
+-- TODO: Should run an arbitrary monadic action on the details package
+--       Could also supply an action which is executed when market-disconnect is detected.
 handleReply
-  :: MProxyT mt mb
-  => MarketConfiguration
+  :: MarketConfiguration
   -> MarketReplyDetails
-  -> mt ()
+  -> PL.MProxy ()
 handleReply _ _ = return ()
 
 -- | TODO
 marketThread
-  :: MProxyT mt IO
-  => Output ControlMessage
-  -> mt ()
+  :: Output ControlMessage
+  -> PL.MProxy ()
 marketThread messageQueue = void $
   S.runStateT threadLoop $ MarketState Nothing Nothing
   where

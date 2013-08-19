@@ -1,6 +1,7 @@
 module HTrade.Backend.Types where
 
 import qualified Data.ByteString.Char8       as B
+import Network.Socket.Internal (SockAddr(..))
 
 import HTrade.Shared.Types
 
@@ -21,3 +22,5 @@ data MarketConfiguration
       _marketOrders           :: B.ByteString,
       _marketInterval         :: MicroSeconds
     }
+
+type WorkerIdentifier = SockAddr

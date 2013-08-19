@@ -1,7 +1,8 @@
-{-# Language ConstraintKinds, DeriveGeneric #-}
+{-# Language ConstraintKinds, DeriveGeneric, GeneralizedNewtypeDeriving #-}
 
 module HTrade.Shared.Types where
 
+import Control.Applicative (Applicative)
 import Control.Concurrent.STM
 import Control.Proxy
 import Control.Proxy.Concurrent
@@ -72,11 +73,6 @@ data MarketReplyDetails
  deriving (Eq, Generic, Show)
 
 instance Binary MarketReplyDetails
-
-type MProxyT mt mb = (MonadBase IO mb{-, MonadBaseControl IO mb-}, Functor mb, mt ~ R.ReaderT (TVar (M.Map WorkerIdentifier WorkerThread)) mb)
-type WorkerIdentifier = SockAddr
-type WorkerThread = Input (Maybe (ProxyRequest, WorkerThreadQueryState))
-type WorkerThreadQueryState = Input (Maybe ProxyResponse)
 
 type MicroSeconds = Int
 type ResponseTime = Int

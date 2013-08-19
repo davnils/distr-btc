@@ -1,6 +1,15 @@
-{-# Language ConstraintKinds, FlexibleContexts, RankNTypes, TypeFamilies #-}
+{-# Language GeneralizedNewtypeDeriving #-}
 
-module HTrade.Backend.ProxyLayer where
+module HTrade.Backend.ProxyLayer (
+  MProxy,
+  withLayer,
+  query,
+  ready,
+  connectedNodes,
+  removeNode,
+  mapLayer,
+  sampleNode
+) where
 
 import qualified Data.Binary                 as BI
 import qualified Data.ByteString.Char8       as B
@@ -12,6 +21,7 @@ import Control.Concurrent.STM
 import Control.Monad
 import Control.Monad.Base
 import Control.Monad.Trans
+import Control.Monad.Trans.Control
 import Control.Proxy
 import qualified Control.Proxy.Trans.State   as PS
 import Control.Proxy.Binary
@@ -26,12 +36,31 @@ import Data.Maybe (fromMaybe)
 import Data.Word (Word16)
 import qualified Network.Simple.TCP          as NS
 import Network.Socket (Socket)
-import Network.Socket.Internal (SockAddr(..))
 import System.Random (randomIO)
 import System.Timeout (timeout)
 
+import HTrade.Backend.Types
 import HTrade.Shared.Types
 import HTrade.Shared.Utils
+
+type WorkerThread = Input (Maybe (ProxyRequest, WorkerThreadQueryState))
+type WorkerThreadQueryState = Input (Maybe ProxyResponse)
+
+type InternalState = TVar (M.Map WorkerIdentifier WorkerThread)
+newtype MProxy a
+ = MProxy
+ {
+   runProxyM :: R.ReaderT InternalState IO a
+ }
+ deriving (
+   Applicative,
+   Functor,
+   Monad,
+   MonadBase IO,
+   MonadBaseControl IO,
+   MonadIO,
+   R.MonadReader InternalState
+ )
 
 readyLimit :: Int
 readyLimit = 1
@@ -56,16 +85,15 @@ maxProbes = 10
 --
 --   Typically this function will wrap almost all computation.
 withLayer
-  :: MProxyT mt mb
-  => Word16
-  -> mt a
-  -> mb a
+  :: Word16
+  -> MProxy a
+  -> IO a
 withLayer port routine = do
   threadState <- liftBase . atomically $ newTVar M.empty
   listenID <- liftBase . C.async $ listener threadState
 
   liftBase $ threadDelay listenDelay
-  result <- R.runReaderT routine threadState
+  result <- R.runReaderT (runProxyM routine) threadState
 
   -- cleanup (every connection is closed through 'serve')
   -- an alternative way is to ~ map (send Nothing) threadState
@@ -144,11 +172,10 @@ saveResponseD _ = do
 --
 --   A non-existant node or an empty pool will result in an error value.
 query
-  :: MProxyT mt mb
-  => Maybe WorkerIdentifier
+  :: Maybe WorkerIdentifier
   -> Maybe MicroSeconds
   -> ProxyRequest
-  -> mt (Maybe ProxyResponse)
+  -> MProxy (Maybe ProxyResponse)
 query addr' timeout' req = do
   let timeout = fromMaybe defaultTimeout timeout' -- TODO: USE!
   let getWorker = fromMaybe sampleNode $ return . Just <$> addr'
@@ -177,21 +204,18 @@ query addr' timeout' req = do
 --   It is suitable to call this function repeatedely until success during
 --   initialization.
 ready
-  :: MProxyT mt mb
-  => mt Bool
+  :: MProxy Bool
 ready = fmap (> readyLimit) connectedNodes
 
 -- | Retrieve the number of connected proxy nodes, based on a snapshot taken internally.
 connectedNodes
-  :: MProxyT mt mb
-  => mt Int
+  :: MProxy Int
 connectedNodes = R.ask >>= fmap M.size . liftBase . readTVarIO
 
 -- | Remove the specified node from the proxy layer.
 removeNode
-  :: MProxyT mt mb
-  => WorkerIdentifier
-  -> mt ()
+  :: WorkerIdentifier
+  -> MProxy ()
 removeNode addr = R.ask >>= \threadState -> liftBase . atomically $ do
   entry <- M.lookup addr <$> readTVar threadState
   modifyTVar' threadState $ M.delete addr
@@ -204,9 +228,8 @@ removeNode addr = R.ask >>= \threadState -> liftBase . atomically $ do
 --   there is a snapshot taken of the set during initialization.
 --   This also implies that additional proxies may be added during execution.
 mapLayer
-  :: MProxyT mt mb
-  => (WorkerIdentifier -> mt a)
-  -> mt (M.Map WorkerIdentifier a)
+  :: (WorkerIdentifier -> MProxy a)
+  -> MProxy (M.Map WorkerIdentifier a)
 mapLayer f = do
   threadMap <- R.ask >>= liftBase . atomically . readTVar
   let addrs = M.keys threadMap
@@ -216,8 +239,7 @@ mapLayer f = do
 -- | Retrieve a randomly sampled node from the worker pool.
 --   Note: Not statistically uniform since it uses (`mod` poolSize).
 sampleNode
-  :: MProxyT mt mb
-  => mt (Maybe WorkerIdentifier)
+  :: MProxy (Maybe WorkerIdentifier)
 sampleNode = R.ask >>= liftBase . atomically . readTVar >>= \workers -> do
   rand <- liftBase randomIO
   let workerSize = M.size workers
