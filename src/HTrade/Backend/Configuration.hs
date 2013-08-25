@@ -1,41 +1,52 @@
-{-# Language ConstraintKinds, FlexibleContexts, Rank2Types, TypeFamilies #-}
+{-# Language FlexibleContexts, GeneralizedNewtypeDeriving #-}
 
 module HTrade.Backend.Configuration where
 
-import Control.Applicative ((<$>))
+import Control.Applicative (Applicative, (<$>))
 import qualified Control.Concurrent.Async.Lifted as C
 import Control.Monad
-import Control.Monad.Base
+-- import Control.Monad.Base
 import Control.Monad.Trans
 import Control.Monad.Trans.Maybe (runMaybeT)
-import qualified Control.Monad.Trans.State   as S
+import qualified Control.Monad.State             as S
 import Control.Proxy.Concurrent
-import qualified Data.ByteString.Char8       as B
-import qualified Data.Map                    as M
+import qualified Data.ByteString.Char8           as B
+import qualified Data.Map                        as M
 import Data.Maybe (isNothing)
 import Data.List (isPrefixOf, partition, deleteFirstsBy)
-import qualified System.Directory            as D
+import qualified System.Directory                as D
 
 import HTrade.Backend.MarketFetch
 import HTrade.Backend.Types
 import HTrade.Shared.Types
 
--- TODO: Fix indentation
-data ConfigState
-  = ConfigState { _threadMap :: M.Map MarketIdentifier (Input ControlMessage) }
-type MFeed = MProxyT mt mb => S.StateT ConfigState mt
+type ConfigState = M.Map MarketIdentifier (Input ControlMessage)
 
+newtype MConfigT m a
+ = MConfigT
+ {
+   runConfigMT :: S.StateT ConfigState m a
+ }
+ deriving (
+   Applicative,
+   Functor,
+   Monad,
+   MonadIO,
+   MonadTrans,
+   S.MonadState ConfigState
+ )
 -- | Parse a directory containing market configurations.
 --   Returns a list of market identifers updated (loaded or refreshed) and any
 --   invalid configuration files.
 --   TODO: Handle exceptions
 loadConfigurations
-  :: FilePath
-  -> MFeed (Maybe ([MarketIdentifier], [FilePath]))
+  :: MonadIO m
+  => FilePath
+  -> MConfigT m (Maybe ([MarketIdentifier], [FilePath]))
 loadConfigurations dir = runMaybeT $ do
-  liftBase (D.doesDirectoryExist dir) >>= guard
-  files <- filter (\file -> not $ isPrefixOf "." file) <$> liftBase (D.getDirectoryContents dir)
-  parsed <- zip files <$> liftBase (mapM parseConfigurationFile files)
+  liftIO (D.doesDirectoryExist dir) >>= guard
+  files <- filter (\file -> not $ isPrefixOf "." file) <$> liftIO (D.getDirectoryContents dir)
+  parsed <- zip files <$> liftIO (mapM parseConfigurationFile files)
   
   -- önskar att få ut:
   -- filnamn tillhörande alla som blev Nothing.
@@ -44,9 +55,9 @@ loadConfigurations dir = runMaybeT $ do
   let (failedFiles, parsedConfs) = partitionParsed parsed []
   let loadedIdentifiers = map _marketIdentifier parsedConfs
 
-  loaded <- M.toList <$> lift (S.gets _threadMap)
+  loaded <- M.toList <$> lift S.get
 
-  let remove = deleteFirstsBy (map fst loaded) loadedIdentifiers
+  let remove = deleteFirstsBy elem (map fst loaded) loadedIdentifiers
       -- updated = loaded `intersect` loadedIdentifiers
       -- new = loadedIdentifiers `intersect` loaded
 
@@ -78,7 +89,7 @@ loadConfigurations dir = runMaybeT $ do
     Just v -> partitionParsed t (acc1, v : acc2)
 
   withThreads l f = do
-    threads <- S.gets _threadMap
+    threads <- lift S.get
     forM l $ f threads
 
 parseConfigurationFile

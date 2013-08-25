@@ -1,7 +1,7 @@
-{-# Language GeneralizedNewtypeDeriving #-}
+{-# Language FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, MultiParamTypeClasses, Rank2Types, TypeFamilies, UndecidableInstances #-}
 
 module HTrade.Backend.ProxyLayer (
-  MProxy,
+  MProxyT,
   withLayer,
   query,
   ready,
@@ -47,20 +47,32 @@ type WorkerThread = Input (Maybe (ProxyRequest, WorkerThreadQueryState))
 type WorkerThreadQueryState = Input (Maybe ProxyResponse)
 
 type InternalState = TVar (M.Map WorkerIdentifier WorkerThread)
-newtype MProxy a
- = MProxy
+newtype MProxyT m a
+ = MProxyT
  {
-   runProxyM :: R.ReaderT InternalState IO a
+   runProxyMT :: R.ReaderT InternalState m a
  }
  deriving (
    Applicative,
    Functor,
    Monad,
-   MonadBase IO,
-   MonadBaseControl IO,
    MonadIO,
+   MonadTrans,
    R.MonadReader InternalState
  )
+
+instance MonadBase m m' => MonadBase m (MProxyT m') where
+  liftBase = liftBaseDefault
+
+instance MonadTransControl MProxyT where
+  newtype StT MProxyT a = StProxy {unProxy :: StT (R.ReaderT InternalState) a}
+  liftWith = defaultLiftWith MProxyT runProxyMT StProxy
+  restoreT = defaultRestoreT MProxyT unProxy
+
+instance MonadBaseControl b m => MonadBaseControl b (MProxyT m) where
+  newtype StM (MProxyT m) a = StMT {unStMT :: ComposeSt MProxyT m a}
+  liftBaseWith = defaultLiftBaseWith StMT
+  restoreM     = defaultRestoreM   unStMT
 
 readyLimit :: Int
 readyLimit = 1
@@ -85,15 +97,16 @@ maxProbes = 10
 --
 --   Typically this function will wrap almost all computation.
 withLayer
-  :: Word16
-  -> MProxy a
-  -> IO a
+  :: MonadBase IO m
+  => Word16
+  -> MProxyT m a
+  -> m a
 withLayer port routine = do
   threadState <- liftBase . atomically $ newTVar M.empty
   listenID <- liftBase . C.async $ listener threadState
 
   liftBase $ threadDelay listenDelay
-  result <- R.runReaderT (runProxyM routine) threadState
+  result <- R.runReaderT (runProxyMT routine) threadState
 
   -- cleanup (every connection is closed through 'serve')
   -- an alternative way is to ~ map (send Nothing) threadState
@@ -172,10 +185,11 @@ saveResponseD _ = do
 --
 --   A non-existant node or an empty pool will result in an error value.
 query
-  :: Maybe WorkerIdentifier
+  :: MonadBase IO m
+  => Maybe WorkerIdentifier
   -> Maybe MicroSeconds
   -> ProxyRequest
-  -> MProxy (Maybe ProxyResponse)
+  -> MProxyT m (Maybe ProxyResponse)
 query addr' timeout' req = do
   let timeout = fromMaybe defaultTimeout timeout' -- TODO: USE!
   let getWorker = fromMaybe sampleNode $ return . Just <$> addr'
@@ -204,18 +218,21 @@ query addr' timeout' req = do
 --   It is suitable to call this function repeatedely until success during
 --   initialization.
 ready
-  :: MProxy Bool
+  :: MonadBase IO m
+  => MProxyT m Bool
 ready = fmap (> readyLimit) connectedNodes
 
 -- | Retrieve the number of connected proxy nodes, based on a snapshot taken internally.
 connectedNodes
-  :: MProxy Int
+  :: MonadBase IO m
+  => MProxyT m Int
 connectedNodes = R.ask >>= fmap M.size . liftBase . readTVarIO
 
 -- | Remove the specified node from the proxy layer.
 removeNode
-  :: WorkerIdentifier
-  -> MProxy ()
+  :: MonadBase IO m
+  => WorkerIdentifier
+  -> MProxyT m ()
 removeNode addr = R.ask >>= \threadState -> liftBase . atomically $ do
   entry <- M.lookup addr <$> readTVar threadState
   modifyTVar' threadState $ M.delete addr
@@ -228,8 +245,9 @@ removeNode addr = R.ask >>= \threadState -> liftBase . atomically $ do
 --   there is a snapshot taken of the set during initialization.
 --   This also implies that additional proxies may be added during execution.
 mapLayer
-  :: (WorkerIdentifier -> MProxy a)
-  -> MProxy (M.Map WorkerIdentifier a)
+  :: MonadBase IO m
+  => (WorkerIdentifier -> MProxyT m a)
+  -> MProxyT m (M.Map WorkerIdentifier a)
 mapLayer f = do
   threadMap <- R.ask >>= liftBase . atomically . readTVar
   let addrs = M.keys threadMap
@@ -239,7 +257,8 @@ mapLayer f = do
 -- | Retrieve a randomly sampled node from the worker pool.
 --   Note: Not statistically uniform since it uses (`mod` poolSize).
 sampleNode
-  :: MProxy (Maybe WorkerIdentifier)
+  :: MonadBase IO m
+  => MProxyT m (Maybe WorkerIdentifier)
 sampleNode = R.ask >>= liftBase . atomically . readTVar >>= \workers -> do
   rand <- liftBase randomIO
   let workerSize = M.size workers

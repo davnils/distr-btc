@@ -1,14 +1,17 @@
-{-# Language GADTs #-}
+{-# Language FlexibleContexts #-}
 
 module HTrade.Backend.MarketFetch where
 
 import qualified Control.Concurrent.Async.Lifted as C
-import Control.Monad
+import Control.Monad hiding (mapM_)
 import Control.Monad.Base
 import Control.Monad.Trans
+import Control.Monad.Trans.Control
 import qualified Control.Monad.Trans.State   as S
 import Control.Proxy.Concurrent
 import qualified Data.ByteString.Char8       as B
+import Data.Foldable (mapM_)
+import Prelude hiding (mapM_)
 
 import qualified HTrade.Backend.ProxyLayer   as PL
 import HTrade.Backend.Types
@@ -19,14 +22,12 @@ data ControlMessage
   = LoadConfiguration MarketConfiguration
   | Shutdown
 
-data MarketState mt where
-  MarketState
-    ::
+data MarketState m
+  = MarketState
     {
-      _threadID :: Maybe (PL.MProxy ()),
+      _cancelWorker :: Maybe (PL.MProxyT m ()),
       _configuration :: Maybe MarketConfiguration
     }
-    -> MarketState mt
 
 defaultMarketTimeout :: MicroSeconds
 defaultMarketTimeout = seconds 5
@@ -35,8 +36,9 @@ defaultMarketTimeout = seconds 5
 
 -- | TODO
 worker
-  :: MarketConfiguration
-  -> PL.MProxy ()
+  :: MonadBase IO m
+  => MarketConfiguration
+  -> PL.MProxyT m ()
 worker conf = forever $ do
   res <- PL.query Nothing (Just defaultMarketTimeout) marketReq
   case res of
@@ -56,31 +58,30 @@ worker conf = forever $ do
 
 -- | TODO
 marketDisconnect
-  :: MarketConfiguration
-  -> PL.MProxy ()
+  :: MonadBase IO m
+  => MarketConfiguration
+  -> PL.MProxyT m ()
 marketDisconnect _ = return ()
 
 -- | TODO
 -- TODO: Should run an arbitrary monadic action on the details package
 --       Could also supply an action which is executed when market-disconnect is detected.
 handleReply
-  :: MarketConfiguration
+  :: MonadBase IO m
+  => MarketConfiguration
   -> MarketReplyDetails
-  -> PL.MProxy ()
+  -> PL.MProxyT m ()
 handleReply _ _ = return ()
 
 -- | TODO
 marketThread
-  :: Output ControlMessage
-  -> PL.MProxy ()
+  :: (MonadBase IO m, MonadBaseControl IO m)
+  => Output ControlMessage
+  -> PL.MProxyT m ()
 marketThread messageQueue = void $
   S.runStateT threadLoop $ MarketState Nothing Nothing
   where
-  threadLoop = do
-    msg <- liftBase . atomically $ recv messageQueue
-    case msg of
-      Nothing -> return ()
-      Just msg' -> handleMessage msg'
+  threadLoop = liftBase (atomically $ recv messageQueue) >>= mapM_ handleMessage
 
   handleMessage (LoadConfiguration conf) = do
     terminateWorker
@@ -90,8 +91,4 @@ marketThread messageQueue = void $
 
   handleMessage Shutdown = terminateWorker
  
-  terminateWorker = do
-    (MarketState thread _) <- S.get
-    case thread of
-      Nothing -> return ()
-      Just t  -> lift t
+  terminateWorker = S.get >>= mapM_ lift . _cancelWorker
