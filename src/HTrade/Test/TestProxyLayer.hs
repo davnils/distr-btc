@@ -30,7 +30,7 @@ verifyDataFlow = do
   printTestCase "verifyDataFlow"
   PL.withLayer testPort tester
   where
-  testPoolSize = 10^(1 :: Int) :: Int
+  testPoolSize = 10^(2 :: Int) :: Int
   tester :: PL.MProxyT IO Bool
   tester = liftM MB.isJust . runMaybeT $ do
     -- establish proxy nodes

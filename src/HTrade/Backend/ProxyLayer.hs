@@ -101,7 +101,7 @@ withLayer
   -> MProxyT m a
   -> m a
 withLayer port routine = do
-  threadState <- liftBase . atomically $ newTVar M.empty
+  threadState <- liftBase $ newTVarIO M.empty
   listenID <- liftBase . C.async $ listener threadState
 
   liftBase $ threadDelay listenDelay
@@ -176,7 +176,7 @@ saveResponseD
 saveResponseD _ = do
   reply <- request ()
   output <- PS.get
-  liftIO . atomically . always $ send output $ Just reply
+  void . liftIO . atomically $ check <$> send output (Just reply)
   respond reply >>= saveResponseD
 
 -- | Execute a query on the proxy layer.
@@ -210,7 +210,7 @@ query addr' timeout' req = do
     thread <- R.ask >>= liftBase . atomically . liftM (M.lookup addr) . readTVar
     (localInput, localOutput) <- liftBase $ spawn Single
     onJust thread $ \remote -> liftBase $ do
-      atomically . always . send remote $ Just (req, localInput)
+      void . atomically $ check <$> send remote (Just (req, localInput))
       atomically . liftM join $ recv localOutput
 
 -- | Check if the number of connected proxy nodes have reached the critical limit.
@@ -219,7 +219,7 @@ query addr' timeout' req = do
 ready
   :: MonadBase IO m
   => MProxyT m Bool
-ready = fmap (> readyLimit) connectedNodes
+ready = fmap (>= readyLimit) connectedNodes
 
 -- | Retrieve the number of connected proxy nodes, based on a snapshot taken internally.
 connectedNodes
