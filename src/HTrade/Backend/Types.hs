@@ -11,6 +11,7 @@ data MarketIdentifier
       _marketName             :: B.ByteString,
       _currency               :: B.ByteString
     }
+  deriving (Eq, Ord, Show)
 
 data MarketConfiguration
   = MarketConfiguration
@@ -22,5 +23,6 @@ data MarketConfiguration
       _marketOrders           :: B.ByteString,
       _marketInterval         :: MicroSeconds
     }
+  deriving (Eq, Ord, Show)
 
 type WorkerIdentifier = SockAddr

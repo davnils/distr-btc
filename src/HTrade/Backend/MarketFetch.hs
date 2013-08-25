@@ -7,13 +7,13 @@ import Control.Monad hiding (mapM_)
 import Control.Monad.Base
 import Control.Monad.Trans
 import Control.Monad.Trans.Control
-import qualified Control.Monad.Trans.State   as S
+import qualified Control.Monad.Trans.State       as S
 import Control.Proxy.Concurrent
-import qualified Data.ByteString.Char8       as B
+import qualified Data.ByteString.Char8           as B
 import Data.Foldable (mapM_)
 import Prelude hiding (mapM_)
 
-import qualified HTrade.Backend.ProxyLayer   as PL
+import qualified HTrade.Backend.ProxyLayer       as PL
 import HTrade.Backend.Types
 import HTrade.Shared.Types
 import HTrade.Shared.Utils

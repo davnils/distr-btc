@@ -1,27 +1,34 @@
-{-# Language FlexibleContexts, GeneralizedNewtypeDeriving #-}
+{-# Language FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
 module HTrade.Backend.Configuration where
 
 import Control.Applicative (Applicative, (<$>))
 import qualified Control.Concurrent.Async.Lifted as C
+import Control.Error
 import Control.Monad
--- import Control.Monad.Base
+import Control.Monad.Base
 import Control.Monad.Trans
+import Control.Monad.Trans.Control
 import Control.Monad.Trans.Maybe (runMaybeT)
 import qualified Control.Monad.State             as S
 import Control.Proxy.Concurrent
 import qualified Data.ByteString.Char8           as B
+import qualified Data.Configurator               as CF
 import qualified Data.Map                        as M
 import Data.Maybe (isNothing)
-import Data.List (isPrefixOf, partition, deleteFirstsBy)
+import qualified Data.List                       as L
+import Data.Ord (comparing)
 import qualified System.Directory                as D
 
 import HTrade.Backend.MarketFetch
+import qualified HTrade.Backend.ProxyLayer       as PL
 import HTrade.Backend.Types
 import HTrade.Shared.Types
 
+-- | TODO
 type ConfigState = M.Map MarketIdentifier (Input ControlMessage)
 
+-- | TODO
 newtype MConfigT m a
  = MConfigT
  {
@@ -35,64 +42,81 @@ newtype MConfigT m a
    MonadTrans,
    S.MonadState ConfigState
  )
+
 -- | Parse a directory containing market configurations.
 --   Returns a list of market identifers updated (loaded or refreshed) and any
 --   invalid configuration files.
 --   TODO: Handle exceptions
 loadConfigurations
-  :: MonadIO m
+  :: (Functor m, MonadBaseControl IO m, MonadIO m)
   => FilePath
-  -> MConfigT m (Maybe ([MarketIdentifier], [FilePath]))
+  -> MConfigT (PL.MProxyT m) (Maybe ([MarketIdentifier], [FilePath]))
 loadConfigurations dir = runMaybeT $ do
   liftIO (D.doesDirectoryExist dir) >>= guard
-  files <- filter (\file -> not $ isPrefixOf "." file) <$> liftIO (D.getDirectoryContents dir)
+  files <- filter (\file -> not $ L.isPrefixOf "." file) <$> liftIO (D.getDirectoryContents dir)
   parsed <- zip files <$> liftIO (mapM parseConfigurationFile files)
-  
-  -- önskar att få ut:
-  -- filnamn tillhörande alla som blev Nothing.
-  -- v i (Just v) (oordnad) för processering.
 
-  let (failedFiles, parsedConfs) = partitionParsed parsed []
+  let (failedFiles, parsedConfs) = partitionParsed parsed ([], [])
   let loadedIdentifiers = map _marketIdentifier parsedConfs
 
-  loaded <- M.toList <$> lift S.get
+  current <- M.toList <$> lift S.get
 
-  let remove = deleteFirstsBy elem (map fst loaded) loadedIdentifiers
-      -- updated = loaded `intersect` loadedIdentifiers
-      -- new = loadedIdentifiers `intersect` loaded
+  let currentLabels = map fst current
+      remove = currentLabels L.\\ loadedIdentifiers
+      new = filterWith notElem parsedConfs currentLabels
+      updated = filterWith elem parsedConfs currentLabels
 
   -- Remove entries that don't exist anymore
   withThreads remove $ \threadMap market -> do
     let Just chan = M.lookup market threadMap
     liftIO . atomically $ send chan Shutdown
-    S.modify $ \s -> M.delete market
-
-  -- Update existing threads
-  {- withThreads updated $ \threadMap conf -> do
-    let Just chan = M.lookup market threadMap
-    liftIO . atomically . send chan $ LoadConfiguration market
+    S.modify $ M.delete market
 
   -- Create new threads
   withThreads new $ \threadMap conf -> do
     (input, output) <- liftIO $ spawn Single
-    void . C.async $ marketThread output
-    liftIO . atomically . send input $ LoadConfiguration market
-    S.modify $ \s -> M.insert (_marketIdentifier conf) input -}
+    void . lift . lift . C.async $ marketThread output
+    liftIO . atomically . send input $ LoadConfiguration conf
+    S.modify $ M.insert (_marketIdentifier conf) input
 
-  -- Return paths with invalid configurations and affected markets
+  -- Update existing threads
+  withThreads updated $ \threadMap conf -> do
+    let Just chan = M.lookup (_marketIdentifier conf) threadMap
+    liftIO . atomically . send chan $ LoadConfiguration conf
+
+  -- Return affected markets and paths with invalid configurations 
   return (loadedIdentifiers, failedFiles)
 
   where
-  partitionParsed [] = id
+  partitionParsed [] acc = acc
   partitionParsed (e:t) (acc1, acc2) = case snd e of
-    snd -> partitionParsed t (fst e : acc1, acc2)
+    Nothing -> partitionParsed t (fst e : acc1, acc2)
     Just v -> partitionParsed t (acc1, v : acc2)
 
   withThreads l f = do
     threads <- lift S.get
     forM l $ f threads
 
+  filterWith _ [] _ = []
+  filterWith f (e:t) existing
+    | f (_marketIdentifier e) existing = e : filterWith f t existing
+    | otherwise = filterWith f t existing
+
+-- | TODO
 parseConfigurationFile
   :: FilePath
   -> IO (Maybe MarketConfiguration)
-parseConfigurationFile = undefined
+parseConfigurationFile path = runMaybeT $ do
+  config <- hushT . syncIO $ CF.load [CF.Required path]
+  let get name = MaybeT $ CF.lookup config name
+
+  marketId <- liftM2 MarketIdentifier
+    (get "name")
+    (get "currency")
+
+  liftM5 (MarketConfiguration marketId)
+    (get "host")
+    (get "path")
+    (get "trades")
+    (get "orderbook")
+    (get "interval")
