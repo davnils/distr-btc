@@ -1,5 +1,3 @@
-{-# Language ConstraintKinds, TypeFamilies #-}
-
 module Main where
 
 import Control.Applicative ((<$>))
@@ -11,10 +9,11 @@ import qualified Control.Concurrent.Async    as C
 import qualified Data.Maybe                  as MB
 import qualified Data.Map                    as M
 import Data.Word (Word16)
-import qualified HTrade.Backend.ProxyLayer   as B
+import System.Exit (exitSuccess, exitFailure)
+
+import qualified HTrade.Backend.ProxyLayer   as PL
 import qualified HTrade.Proxy.Proxy          as P
 import qualified HTrade.Shared.Types         as T
-import System.Exit (exitSuccess, exitFailure)
 
 testPort :: Word16
 testPort = 8888
@@ -29,10 +28,10 @@ printTestCase name = putStrLn $ "[*] Test case: " ++ name
 verifyDataFlow :: IO Bool
 verifyDataFlow = do
   printTestCase "verifyDataFlow"
-  B.withLayer testPort tester
+  PL.withLayer testPort tester
   where
-  testPoolSize = 10^3 :: Int
-  tester :: T.MProxyT mt mb => mt Bool
+  testPoolSize = 10^(1 :: Int) :: Int
+  tester :: PL.MProxyT IO Bool
   tester = liftM MB.isJust . runMaybeT $ do
     -- establish proxy nodes
     pool <- liftIO $ forM [1..testPoolSize] $
@@ -42,11 +41,11 @@ verifyDataFlow = do
 
     -- wait for full connectivity
     let waitLoop = do
-        nodes <- lift B.connectedNodes
-        when (nodes /= testPoolSize) $ liftIO (threadDelay $ 500 * 10^3) >> waitLoop
+        nodes <- lift PL.connectedNodes
+        when (nodes /= testPoolSize) $ liftIO (threadDelay $ 500 * 10^(3 :: Int)) >> waitLoop
 
     waitLoop
-    lift B.ready >>= guard
+    lift PL.ready >>= guard
 
     liftIO . putStrLn $
       "[*] Pool considered fully connected."
@@ -54,8 +53,8 @@ verifyDataFlow = do
     -- verify data transfer, by transmitting a status request to each node.
     -- (1) proper response with StatusReply constructor.
     -- (2) correct number of replies, one from each.
-    rx <- lift . B.mapLayer $
-      \addr -> B.query (Just addr) Nothing T.StatusRequest
+    rx <- lift . PL.mapLayer $
+      \addr -> PL.query (Just addr) Nothing T.StatusRequest
     let responses = map snd $ M.toList rx
     guard $ length responses == testPoolSize
     guard $ all matchStatusCons responses

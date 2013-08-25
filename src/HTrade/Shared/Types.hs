@@ -1,22 +1,10 @@
-{-# Language ConstraintKinds, DeriveGeneric, GeneralizedNewtypeDeriving #-}
+{-# Language DeriveGeneric #-}
 
 module HTrade.Shared.Types where
 
-import Control.Applicative (Applicative)
-import Control.Concurrent.STM
-import Control.Proxy
-import Control.Proxy.Concurrent
-import Control.Monad
-import Control.Monad.Base
--- import Control.Monad.Trans.Control
-import Control.Monad.Trans
-import qualified Control.Monad.Reader        as R
 import qualified Data.ByteString.Char8       as B
 import Data.Binary (Binary)
-import qualified Data.Map                    as M
-import Data.Word (Word16)
 import GHC.Generics (Generic)
-import Network.Socket.Internal (SockAddr(..))
 
 type ProxyVersion = (Int, Int)
 type MarketTrade = B.ByteString -- TODO

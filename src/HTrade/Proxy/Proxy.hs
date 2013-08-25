@@ -3,16 +3,13 @@
 module HTrade.Proxy.Proxy where
 
 import Control.Applicative ((<$>))
-import Control.Error (hush)
 import qualified Control.Exception           as E
 import Control.Proxy
 import Control.Proxy.Binary
 import Control.Proxy.Safe
-import Control.Proxy.Trans.Either (runEitherK)
 import Control.Proxy.Trans.State (runStateK)
 import qualified Control.Proxy.TCP           as N
 import Control.Monad.State
-import Data.Binary (Binary)
 import qualified Data.ByteString.Char8       as B
 import Data.Monoid ((<>))
 import qualified Data.Monoid.Statistics      as MS
@@ -21,7 +18,7 @@ import qualified Data.Set                    as S
 import qualified Data.Time                   as T
 import Data.Word (Word16)
 import qualified Network.Http.Client         as H
-import Network.Socket (HostName, ServiceName, Socket)
+import Network.Socket (HostName, Socket)
 import System.Timeout (timeout)
 
 import HTrade.Shared.Types
@@ -37,7 +34,7 @@ proxyVersion :: ProxyVersion
 proxyVersion  = (0, 1)
 
 timerPrecision :: Int
-timerPrecision = 10^6
+timerPrecision = 10^(6 :: Int)
 
 -- | While not killed by an asynchronous exception, repeatedly connect to backend.
 --   Any internal failures (such as lost backend connection) will result in a
@@ -69,27 +66,27 @@ requestThread socket = void . runProxy . runStateK [] . runEitherK $ worker
     >-> liftP . mapMD handleRequest             -- generate reply packet
     >-> liftP . hoist lift . writePacket socket -- transmit reply to backend
 
-  readPacket socket =
-        N.socketReadS 4096 socket
+  readPacket sock =
+        N.socketReadS 4096 sock
     >-> mapD Just
     >-> decodeD
 
-  writePacket socket =
+  writePacket sock =
         encodeD
-    >-> N.socketWriteD socket
+    >-> N.socketWriteD sock
 
 -- | Handle request from backend and generate a reply packet.
 handleRequest
   :: ProxyRequest
   -> MWorker ProxyResponse
 
-handleRequest (MarketRequest site path trade order timeout) = do
+handleRequest (MarketRequest site path trade order timeout') = do
   let prependPath = (<> "/" <> path)
   market <- lift $ getMarket
     site
     (prependPath trade)
     (prependPath order)
-    timeout
+    timeout'
 
   case market of
     Nothing -> return $ MarketReply market

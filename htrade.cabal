@@ -38,13 +38,14 @@ library
 executable htrade-backend
   hs-source-dirs:    src
   main-is:           HTrade/Backend/Backend.hs
-  other-modules:     HTrade.Backend.Types, HTrade.Backend.ProxyLayer
+  other-modules:     HTrade.Backend.Types, HTrade.Backend.ProxyLayer, HTrade.Backend.MarketFetch, HTrade.Backend.Configuration
   ghc-options:       -O2 -Wall
   
   build-depends:     base == 4.*,
                      async == 2.0.*,
                      binary == 0.7.*,
                      bytestring >= 0.9.2.1 && < 0.11,
+                     configurator == 0.2.*,
                      containers >= 0.4 && < 0.6,
                      ghc-prim >= 0.2 && < 0.4,
                      lifted-async == 0.1.*,

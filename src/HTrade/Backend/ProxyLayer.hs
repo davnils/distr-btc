@@ -30,7 +30,6 @@ import Control.Proxy.Safe
 import qualified Control.Proxy.TCP           as N
 import qualified Control.Monad.Reader        as R
 import qualified Data.Map                    as M
-import qualified Data.Set                    as S
 import Data.Binary (Binary)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word16)
@@ -129,7 +128,7 @@ withLayer port routine = do
       -- (2) submits the corresponding request packet
       -- (2) retrieves the result and notifies the original query
 
-      tryAny . runProxy . runEitherK . PS.runStateK undefined $ 
+      void . tryAny . runProxy . runEitherK . PS.runStateK undefined $ 
             recvS localOutput
         >-> terminateD
         >-> saveInputD
@@ -159,9 +158,9 @@ getPacketD
   -> p () x b' b m r
 getPacketD socket = runIdentityK (go socket)
   where
-  go socket _ = do
+  go sock _ = do
     _ <- request ()
-    liftIO (retrievePacket B.empty) >>= respond >>= go socket
+    liftIO (retrievePacket B.empty) >>= respond >>= go sock
 
   retrievePacket acc = do
     Just rx <- fmap join . timeout proxyTimeout $ NS.recv socket 4096
@@ -177,7 +176,7 @@ saveResponseD
 saveResponseD _ = do
   reply <- request ()
   output <- PS.get
-  liftIO . atomically $ send output $ Just reply
+  liftIO . atomically . always $ send output $ Just reply
   respond reply >>= saveResponseD
 
 -- | Execute a query on the proxy layer.
@@ -191,7 +190,7 @@ query
   -> ProxyRequest
   -> MProxyT m (Maybe ProxyResponse)
 query addr' timeout' req = do
-  let timeout = fromMaybe defaultTimeout timeout' -- TODO: USE!
+  let timeout'' = fromMaybe defaultTimeout timeout' -- TODO: USE!
   let getWorker = fromMaybe sampleNode $ return . Just <$> addr'
 
   -- iterate until a response is retrieved or the limit is reached
@@ -211,7 +210,7 @@ query addr' timeout' req = do
     thread <- R.ask >>= liftBase . atomically . liftM (M.lookup addr) . readTVar
     (localInput, localOutput) <- liftBase $ spawn Single
     onJust thread $ \remote -> liftBase $ do
-      atomically . send remote $ Just (req, localInput)
+      atomically . always . send remote $ Just (req, localInput)
       atomically . liftM join $ recv localOutput
 
 -- | Check if the number of connected proxy nodes have reached the critical limit.

@@ -7,13 +7,7 @@ import Control.Concurrent (threadDelay)
 import qualified Control.Exception           as E
 import Control.Monad.Base
 import Control.Proxy
-import Control.Proxy.Binary
-import qualified Control.Proxy.TCP           as N
 import Control.Proxy.Safe
-import Data.Binary (Binary)
-import qualified Data.ByteString.Char8       as B
-import Network.Socket (Socket)
-import Network.Socket.Internal (SockAddr(..))
 
 import HTrade.Shared.Types
 
@@ -61,7 +55,7 @@ blockExceptions = fmap filterExp . tryAny
 seconds
   :: Int
   -> MicroSeconds
-seconds = (* 10^6)
+seconds = (* 10^(6 :: Int))
 
 -- | Wait for specified amount of time (in microseconds).
 delay

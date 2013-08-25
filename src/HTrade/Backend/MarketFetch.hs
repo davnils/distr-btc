@@ -9,7 +9,6 @@ import Control.Monad.Trans
 import Control.Monad.Trans.Control
 import qualified Control.Monad.Trans.State       as S
 import Control.Proxy.Concurrent
-import qualified Data.ByteString.Char8           as B
 import Data.Foldable (mapM_)
 import Prelude hiding (mapM_)
 
@@ -55,6 +54,7 @@ worker conf = forever $ do
 
   parseReply (MarketReply Nothing)      = marketDisconnect conf
   parseReply (MarketReply (Just reply)) = handleReply conf reply
+  parseReply _      = return () -- TODO: Investigate type-level reply difference
 
 -- | TODO
 marketDisconnect
