@@ -97,6 +97,7 @@ Test-Suite test-proxylayer
   type:              exitcode-stdio-1.0
   hs-source-dirs:    src
   main-is:           HTrade/Test/TestProxyLayer.hs
+  other-modules:     HTrade.Test.Utils
   ghc-options:       -O2 -threaded -Wall
 
   build-depends:     base == 4.*,
