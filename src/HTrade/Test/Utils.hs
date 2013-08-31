@@ -8,6 +8,10 @@ import System.Exit (exitSuccess, exitFailure)
 testPort :: Word16
 testPort = 8888
 
+-- | Number of quickcheck test runs performed by default.
+quickcheckTestRuns :: Int
+quickcheckTestRuns = 1000
+
 -- | Run all the provided test cases and return with success or failure.
 checkTestCases :: [(String, IO Bool)] -> IO ()
 checkTestCases tests = do

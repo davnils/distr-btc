@@ -6,24 +6,24 @@ import Control.Applicative (Applicative, (<$>))
 import qualified Control.Concurrent.Async.Lifted as C
 import Control.Error
 import Control.Monad
-import Control.Monad.Base
+-- import Control.Monad.Base
 import Control.Monad.Trans
 import Control.Monad.Trans.Control
-import Control.Monad.Trans.Maybe (runMaybeT)
+-- import Control.Monad.Trans.Maybe (runMaybeT)
 import qualified Control.Monad.State             as S
 import Control.Proxy.Concurrent
-import qualified Data.ByteString.Char8           as B
+-- import qualified Data.ByteString.Char8           as B
 import qualified Data.Configurator               as CF
 import qualified Data.Map                        as M
-import Data.Maybe (isNothing)
+-- import Data.Maybe (isNothing)
 import qualified Data.List                       as L
-import Data.Ord (comparing)
+-- import Data.Ord (comparing)
 import qualified System.Directory                as D
 
 import HTrade.Backend.MarketFetch
 import qualified HTrade.Backend.ProxyLayer       as PL
 import HTrade.Backend.Types
-import HTrade.Shared.Types
+-- import HTrade.Shared.Types
 
 -- | TODO
 type ConfigState = M.Map MarketIdentifier (Input ControlMessage)
@@ -67,20 +67,20 @@ loadConfigurations dir = runMaybeT $ do
       updated = filterWith elem parsedConfs currentLabels
 
   -- Remove entries that don't exist anymore
-  withThreads remove $ \threadMap market -> do
+  void . withThreads remove $ \threadMap market -> do
     let Just chan = M.lookup market threadMap
     liftIO . atomically $ send chan Shutdown
     S.modify $ M.delete market
 
   -- Create new threads
-  withThreads new $ \threadMap conf -> do
+  void . withThreads new $ \threadMap conf -> do
     (input, output) <- liftIO $ spawn Single
     void . lift . lift . C.async $ marketThread output
     liftIO . atomically . send input $ LoadConfiguration conf
     S.modify $ M.insert (_marketIdentifier conf) input
 
   -- Update existing threads
-  withThreads updated $ \threadMap conf -> do
+  void . withThreads updated $ \threadMap conf -> do
     let Just chan = M.lookup (_marketIdentifier conf) threadMap
     liftIO . atomically . send chan $ LoadConfiguration conf
 
