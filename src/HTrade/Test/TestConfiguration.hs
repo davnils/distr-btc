@@ -67,7 +67,7 @@ verifyConfigurationParser  = do
     (path, handle) <- Q.run $ openTempFile "/tmp/" "configuration-parser-test.conf"
     Q.run $ hPutStr handle (showConfiguration genConf) >> hClose handle
     parsedConf <- Q.run $ C.parseConfigurationFile path
-    Q.assert $ parsedConf == Just genConf 
+    Q.assert $ parsedConf == Just genConf
 
 -- | Call tests and indicate success in return code.
 main :: IO ()

@@ -6,24 +6,18 @@ import Control.Applicative (Applicative, (<$>))
 import qualified Control.Concurrent.Async.Lifted as C
 import Control.Error
 import Control.Monad
--- import Control.Monad.Base
 import Control.Monad.Trans
 import Control.Monad.Trans.Control
--- import Control.Monad.Trans.Maybe (runMaybeT)
 import qualified Control.Monad.State             as S
 import Control.Proxy.Concurrent
--- import qualified Data.ByteString.Char8           as B
 import qualified Data.Configurator               as CF
 import qualified Data.Map                        as M
--- import Data.Maybe (isNothing)
 import qualified Data.List                       as L
--- import Data.Ord (comparing)
 import qualified System.Directory                as D
 
 import HTrade.Backend.MarketFetch
 import qualified HTrade.Backend.ProxyLayer       as PL
 import HTrade.Backend.Types
--- import HTrade.Shared.Types
 
 -- | TODO
 type ConfigState = M.Map MarketIdentifier (Input ControlMessage)
@@ -73,7 +67,7 @@ loadConfigurations dir = runMaybeT $ do
     S.modify $ M.delete market
 
   -- Create new threads
-  void . withThreads new $ \threadMap conf -> do
+  void . withThreads new $ \_ conf -> do
     (input, output) <- liftIO $ spawn Single
     void . lift . lift . C.async $ marketThread output
     liftIO . atomically . send input $ LoadConfiguration conf

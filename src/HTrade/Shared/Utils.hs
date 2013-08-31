@@ -8,6 +8,7 @@ import qualified Control.Exception           as E
 import Control.Monad.Base
 import Control.Proxy
 import Control.Proxy.Safe
+import Data.Word (Word)
 
 import HTrade.Shared.Types
 
@@ -53,7 +54,7 @@ blockExceptions = fmap filterExp . tryAny
 
 -- | Convert seconds to microseconds.
 seconds
-  :: Int
+  :: Word
   -> MicroSeconds
 seconds = (* 10^(6 :: Int))
 
@@ -62,4 +63,4 @@ delay
   :: MonadBase IO m
   => MicroSeconds
   -> m ()
-delay = liftBase . threadDelay
+delay = liftBase . threadDelay . fromIntegral

@@ -104,7 +104,7 @@ withLayer port routine = do
   threadState <- liftBase $ newTVarIO M.empty
   listenID <- liftBase . C.async $ listener threadState
 
-  liftBase $ threadDelay listenDelay
+  liftBase . threadDelay $ fromIntegral listenDelay
   result <- R.runReaderT (runProxyMT routine) threadState
 
   -- cleanup (every connection is closed through 'serve')
@@ -133,7 +133,7 @@ withLayer port routine = do
         >-> terminateD
         >-> saveInputD
         >-> encodeD
-        >-> liftP . N.socketWriteTimeoutD proxyTimeout socket
+        >-> liftP . N.socketWriteTimeoutD (fromIntegral proxyTimeout) socket
         >-> getPacketD socket
         >-> saveResponseD
 
@@ -163,7 +163,7 @@ getPacketD socket = runIdentityK (go socket)
     liftIO (retrievePacket B.empty) >>= respond >>= go sock
 
   retrievePacket acc = do
-    Just rx <- fmap join . timeout proxyTimeout $ NS.recv socket 4096
+    Just rx <- fmap join . timeout (fromIntegral proxyTimeout) $ NS.recv socket 4096
     let total = B.append acc rx
     case BI.decodeOrFail (BL.fromChunks [total]) of
       Right (_, _, obj) -> return obj

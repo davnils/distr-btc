@@ -4,6 +4,7 @@ module HTrade.Shared.Types where
 
 import qualified Data.ByteString.Char8       as B
 import Data.Binary (Binary)
+import Data.Word (Word)
 import GHC.Generics (Generic)
 
 type ProxyVersion = (Int, Int)
@@ -62,5 +63,5 @@ data MarketReplyDetails
 
 instance Binary MarketReplyDetails
 
-type MicroSeconds = Int
+type MicroSeconds = Word
 type ResponseTime = Int

@@ -124,7 +124,7 @@ getMarket site tradePath orderPath allowance = do
       trades
       orders
   where
-  checkTimeout = fmap join . timeout allowance
+  checkTimeout = fmap join . timeout (fromIntegral allowance)
 
   withConn = E.bracket
     (H.establishConnection site)
