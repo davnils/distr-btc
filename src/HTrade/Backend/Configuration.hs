@@ -1,6 +1,11 @@
 {-# Language FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
 
-module HTrade.Backend.Configuration where
+module HTrade.Backend.Configuration (
+  MConfigT, 
+  withConfiguration,
+  loadConfigurations,
+  parseConfigurationFile
+) where
 
 import Control.Applicative (Applicative, (<$>))
 import qualified Control.Concurrent.Async.Lifted as C
@@ -19,10 +24,13 @@ import HTrade.Backend.MarketFetch
 import qualified HTrade.Backend.ProxyLayer       as PL
 import HTrade.Backend.Types
 
--- | TODO
+-- | Internal state used by configuration layer.
+--   Maintains a mapping between loaded markets and their corresponding
+--   input channels which are used to retrieve control messages.
 type ConfigState = M.Map MarketIdentifier (Input ControlMessage)
 
--- | TODO
+-- | Configuration monad transformer managing market threads in relation 
+--   to loaded and parsed configuration files.
 newtype MConfigT m a
  = MConfigT
  {
@@ -37,9 +45,17 @@ newtype MConfigT m a
    S.MonadState ConfigState
  )
 
+-- | Run configuration-related functions over some arbitrary monad.
+withConfiguration
+  :: Monad m
+  => MConfigT m a
+  -> m a
+withConfiguration routine = liftM fst $ S.runStateT (runConfigMT routine) M.empty
+
 -- | Parse a directory containing market configurations.
 --   Returns a list of market identifers updated (loaded or refreshed) and any
 --   invalid configuration files.
+--
 --   TODO: Handle exceptions
 loadConfigurations
   :: (Functor m, MonadBaseControl IO m, MonadIO m)
@@ -48,7 +64,8 @@ loadConfigurations
 loadConfigurations dir = runMaybeT $ do
   liftIO (D.doesDirectoryExist dir) >>= guard
   files <- filter (\file -> not $ L.isPrefixOf "." file) <$> liftIO (D.getDirectoryContents dir)
-  parsed <- zip files <$> liftIO (mapM parseConfigurationFile files)
+  let withDirPrefix = map (\file -> dir ++ "/" ++ file) files
+  parsed <- zip files <$> liftIO (mapM parseConfigurationFile withDirPrefix)
 
   let (failedFiles, parsedConfs) = partitionParsed parsed ([], [])
   let loadedIdentifiers = map _marketIdentifier parsedConfs
@@ -96,7 +113,10 @@ loadConfigurations dir = runMaybeT $ do
     | f (_marketIdentifier e) existing = e : filterWith f t existing
     | otherwise = filterWith f t existing
 
--- | TODO
+-- | Parse a configuration file from the given file path.
+--   Parser error and exceptions results in 'Data.Maybe.Nothing'.
+--   All configuration files must be written according to the format
+--   specified by the configurator package.
 parseConfigurationFile
   :: FilePath
   -> IO (Maybe MarketConfiguration)
