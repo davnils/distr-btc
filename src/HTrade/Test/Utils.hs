@@ -32,7 +32,7 @@ checkTestCases tests = do
   printAndRun (desc, test) = printTestCase desc >> test
   printTestCase name = putStrLn $ "[*] Test case: " ++ name
 
--- TODO
+-- | Evaluate a monadic property using QuickCheck with resonable parameters.
 withQuickCheck :: Q.Testable prop => prop -> IO Bool
 withQuickCheck f = do
   let args = Q.stdArgs { Q.maxSuccess = quickcheckTestRuns }
@@ -41,7 +41,9 @@ withQuickCheck f = do
     Q.Success{} -> return True
     _ -> return False
 
--- TODO
+-- | Execute an action with the given pool size over a cluster.
+--   Will setup a backend node, proxies, and verify connectivity,
+--   before executing the provided action, and finally terminating.
 withLayers poolSize f = PL.withLayer testPort . fmap MB.isJust . runMaybeT $ do
   -- establish proxy nodes
   pool <- liftIO $ forM [1..poolSize] $

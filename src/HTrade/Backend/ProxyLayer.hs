@@ -42,10 +42,16 @@ import HTrade.Backend.Types
 import HTrade.Shared.Types
 import HTrade.Shared.Utils
 
+-- | Type of a worker thread stored in the globally shared thread map.
 type WorkerThread = Input (Maybe (ProxyRequest, WorkerThreadQueryState))
+
+-- | Type of state used in pipeline.
 type WorkerThreadQueryState = Input (Maybe ProxyResponse)
 
+-- | Internal state used in monad transformer, stores a globally shared map.
 type InternalState = TVar (M.Map WorkerIdentifier WorkerThread)
+
+-- | Monad transformer giving access to the proxy layer.
 newtype MProxyT m a
  = MProxyT
  {
@@ -73,18 +79,25 @@ instance MonadBaseControl b m => MonadBaseControl b (MProxyT m) where
   liftBaseWith = defaultLiftBaseWith StMT
   restoreM     = defaultRestoreM   unStMT
 
+-- | Minimum number of nodes required before allowing any proxy layer queries.
 readyLimit :: Int
 readyLimit = 1
 
+-- | Default timeout used by proxy layer queries, when not otherwise specified.
 defaultTimeout :: MicroSeconds
 defaultTimeout = 1000000
 
+-- | Proxy timeout value which defines internal allowance between backend
+--   and proxy layer. Any requests surpassing this limit will be redirected
+--   to another proxy node or considered unavailable.
 proxyTimeout :: MicroSeconds
 proxyTimeout = 10000000
 
+-- | Internal delay after backend has been established.
 listenDelay :: MicroSeconds
 listenDelay = 500000
 
+-- | Maximum number of proxy queries before result is considered unavailable.
 maxProbes :: Int
 maxProbes = 10
 

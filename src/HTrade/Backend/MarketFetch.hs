@@ -17,10 +17,13 @@ import HTrade.Backend.Types
 import HTrade.Shared.Types
 import HTrade.Shared.Utils
 
+-- | Control message sent to a market channel by some external entity.
 data ControlMessage
   = LoadConfiguration MarketConfiguration
   | Shutdown
 
+-- | Internal state used by market workers in order to keep track of
+--   the thread and configuration, if yet loaded.
 data MarketState m
   = MarketState
     {
@@ -28,12 +31,15 @@ data MarketState m
       _configuration :: Maybe MarketConfiguration
     }
 
+-- | Default market timeout used to define when a market is unreachable. 
 defaultMarketTimeout :: MicroSeconds
 defaultMarketTimeout = seconds 5
 
 -- TODO: Check relation between query-timeout and marketreq-timeout
 
--- | TODO
+-- | Worker function executed in a separate thread.
+--   Takes as input a configuration and will repeatedly poll the market
+--   with the provided settings, and handle the possible outcomes.
 worker
   :: MonadBase IO m
   => MarketConfiguration
@@ -56,14 +62,14 @@ worker conf = forever $ do
   parseReply (MarketReply (Just reply)) = handleReply conf reply
   parseReply _      = return () -- TODO: Investigate type-level reply difference
 
--- | TODO
+-- | Function executed when a market disconnect has been detected.
 marketDisconnect
   :: MonadBase IO m
   => MarketConfiguration
   -> PL.MProxyT m ()
 marketDisconnect _ = return ()
 
--- | TODO
+-- | Function executed when a market reply has been received.
 -- TODO: Should run an arbitrary monadic action on the details package
 --       Could also supply an action which is executed when market-disconnect is detected.
 handleReply
@@ -73,7 +79,8 @@ handleReply
   -> PL.MProxyT m ()
 handleReply _ _ = return ()
 
--- | TODO
+-- | Separate thread which corresponds to a single market.
+--   Handles updated configurations and other external requests.
 marketThread
   :: (MonadBase IO m, MonadBaseControl IO m)
   => Output ControlMessage
