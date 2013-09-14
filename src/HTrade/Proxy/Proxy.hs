@@ -63,11 +63,16 @@ requestThread socket = void . runProxy . runStateK [] . runEitherK $ worker
   where
   worker = 
        hoist lift . readPacket socket          -- read request from backend
+    >-> liftP . hoist lift . execD (putStrLn "[proxy] readPacket done")
     >-> liftP . mapMD handleRequest             -- generate reply packet
     >-> liftP . hoist lift . writePacket socket -- transmit reply to backend
 
+  -- TODO: Verify if this implementation of readPacket actually is correct
+  --       Might be the root cause behind limited packet propagation
   readPacket sock =
         N.socketReadS 4096 sock
+    >-> execD (putStrLn "[proxy] socketReadS returned")
+    >-> useD (\cont -> putStrLn $ "[proxy] socketReadS resulted in: " <> (show $ B.length cont))
     >-> mapD Just
     >-> decodeD
 
@@ -113,6 +118,7 @@ getMarket
   -> MicroSeconds
   -> IO (Maybe MarketReplyDetails)
 getMarket site tradePath orderPath allowance = do
+  putStrLn "[proxy] runnning getMarket upon request"
   preConnectTime <- T.getCurrentTime
   blockExceptions . checkTimeout . withConn $ \conn -> do
     trades <- retrieve conn tradePath

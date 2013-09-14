@@ -6,29 +6,22 @@ import qualified Control.Concurrent.Async    as A
 import Control.Concurrent (threadDelay)
 import qualified Control.Exception           as E
 import Control.Monad.Base
-import Control.Proxy
-import Control.Proxy.Safe
-import Data.Word (Word)
+import Data.Word (Word, Word16)
+import Pipes
 
 import HTrade.Shared.Types
 
-backendPort :: Int
+backendPort :: Word16
 backendPort = 1111
 
-ignoreProxy
-  :: (Monad m, ProxyInternal p)
-  => p a' a b' b m r
-  -> p a' a b' b m ()
-ignoreProxy p = (?>=) p $ \_ -> return_P ()
-
-terminateD :: (Monad m, Proxy p) => () -> Pipe p (Maybe a) a m ()
-terminateD () = runIdentityP go
-  where
-  go = do
-    val <- request ()
-    case val of
-      Just a -> respond a >> go
-      Nothing -> return ()
+terminateD
+  :: Monad m
+  => Pipe (Maybe a) a m ()
+terminateD = do
+  val <- await
+  case val of
+    Just a -> yield a >> terminateD
+    Nothing -> return ()
 
 -- todo: replace
 onJust
@@ -40,7 +33,7 @@ onJust Nothing _ = return Nothing
 onJust (Just val) f = f val
 
 -- Evaluate an IO action and catch ANY exceptions in an either value.
-tryAny :: IO a -> IO (Either SomeException a)
+tryAny :: IO a -> IO (Either E.SomeException a)
 tryAny action = A.withAsync action A.waitCatch
 
 -- | Hoist synchronous exceptions into Maybe and let all other pass.

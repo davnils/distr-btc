@@ -67,17 +67,19 @@ marketDisconnect
   :: MonadBase IO m
   => MarketConfiguration
   -> PL.MProxyT m ()
-marketDisconnect _ = return ()
+marketDisconnect _ = liftBase $ putStrLn "[MarketFetch] market considered disconnected"
 
 -- | Function executed when a market reply has been received.
--- TODO: Should run an arbitrary monadic action on the details package
---       Could also supply an action which is executed when market-disconnect is detected.
+--
+--   TODO: Should run an arbitrary monadic action on the details package
+--         Could also supply an action which is executed when market-disconnect is detected.
 handleReply
   :: MonadBase IO m
   => MarketConfiguration
   -> MarketReplyDetails
   -> PL.MProxyT m ()
-handleReply _ _ = return ()
+handleReply market reply = liftBase $ putStrLn
+  "--------------------\n[MarketFetch] Received reply" >> print market >> print reply
 
 -- | Separate thread which corresponds to a single market.
 --   Handles updated configurations and other external requests.
