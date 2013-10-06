@@ -1,4 +1,7 @@
-{-# Language FlexibleContexts, GeneralizedNewtypeDeriving, OverloadedStrings #-}
+{-# Language
+  FlexibleContexts,
+  GeneralizedNewtypeDeriving,
+  OverloadedStrings #-}
 
 module HTrade.Backend.Configuration (
   MConfigT, 
@@ -14,10 +17,10 @@ import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Trans.Control
 import qualified Control.Monad.State             as S
-import Control.Proxy.Concurrent
 import qualified Data.Configurator               as CF
 import qualified Data.Map                        as M
 import qualified Data.List                       as L
+import qualified Pipes.Concurrent                as P
 import qualified System.Directory                as D
 
 import HTrade.Backend.MarketFetch
@@ -27,7 +30,7 @@ import HTrade.Backend.Types
 -- | Internal state used by configuration layer.
 --   Maintains a mapping between loaded markets and their corresponding
 --   input channels which are used to retrieve control messages.
-type ConfigState = M.Map MarketIdentifier (Input ControlMessage)
+type ConfigState = M.Map MarketIdentifier (P.Output ControlMessage)
 
 -- | Configuration monad transformer managing market threads in relation 
 --   to loaded and parsed configuration files.
@@ -80,20 +83,22 @@ loadConfigurations dir = runMaybeT $ do
   -- Remove entries that don't exist anymore
   void . withThreads remove $ \threadMap market -> do
     let Just chan = M.lookup market threadMap
-    liftIO . atomically $ send chan Shutdown
+    -- TODO: Handle failure
+    liftIO . P.atomically $ P.send chan Shutdown
     S.modify $ M.delete market
 
   -- Create new threads
   void . withThreads new $ \_ conf -> do
-    (input, output) <- liftIO $ spawn Single
-    void . lift . lift . C.async $ marketThread output
-    liftIO . atomically . send input $ LoadConfiguration conf
-    S.modify $ M.insert (_marketIdentifier conf) input
+    (output, input) <- liftIO $ P.spawn P.Single
+    void . lift . lift . C.async $ marketThread input
+    -- TODO: Handle failure
+    liftIO . P.atomically . P.send output $ LoadConfiguration conf
+    S.modify $ M.insert (_marketIdentifier conf) output
 
   -- Update existing threads
   void . withThreads updated $ \threadMap conf -> do
     let Just chan = M.lookup (_marketIdentifier conf) threadMap
-    liftIO . atomically . send chan $ LoadConfiguration conf
+    liftIO . P.atomically . P.send chan $ LoadConfiguration conf
 
   -- Return affected markets and paths with invalid configurations 
   return (loadedIdentifiers, failedFiles)

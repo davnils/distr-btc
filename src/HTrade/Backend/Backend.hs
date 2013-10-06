@@ -8,8 +8,7 @@ import HTrade.Shared.Utils (backendPort)
 
 main :: IO ()
 main = PL.withLayer backendPort $ C.withConfiguration $ do
-  liftIO $ putStrLn "Loading configurations.."
   confs <- C.loadConfigurations "data/configurations/test"
-  liftIO $ putStrLn $ "Done, result: " ++ show confs
+  liftIO $ putStrLn $ "Loaded configurations: " ++ show confs
   liftIO $ threadDelay $ 60 * 10^6
   liftIO $ putStrLn "Terminating"

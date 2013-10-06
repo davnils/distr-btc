@@ -1,24 +1,26 @@
-{-# Language NoMonomorphismRestriction, OverloadedStrings #-}
+{-# Language
+  NoMonomorphismRestriction,
+  OverloadedStrings #-}
 
 module HTrade.Proxy.Proxy where
 
 import Control.Applicative ((<$>))
 import qualified Control.Exception           as E
-import Control.Proxy
-import Control.Proxy.Binary
-import Control.Proxy.Safe
-import Control.Proxy.Trans.State (runStateK)
-import qualified Control.Proxy.TCP           as N
 import Control.Monad.State
 import qualified Data.ByteString.Char8       as B
 import Data.Monoid ((<>))
 import qualified Data.Monoid.Statistics      as MS
-import qualified Data.Monoid.Statistics.Numeric         as MSN
+import qualified Data.Monoid.Statistics.Numeric as MSN
 import qualified Data.Set                    as S
 import qualified Data.Time                   as T
 import Data.Word (Word16)
 import qualified Network.Http.Client         as H
 import Network.Socket (HostName, Socket)
+import Pipes ((>->))
+import qualified Pipes                       as P
+import qualified Pipes.Prelude               as P
+import qualified Pipes.Binary                as P
+import qualified Pipes.Network.TCP           as P
 import System.Timeout (timeout)
 
 import HTrade.Shared.Types
@@ -51,40 +53,33 @@ runWorker
   :: HostName
   -> Word16
   -> IO ()
-runWorker host port = N.connect host (show port) $ \(socket, _) -> do
-  void $ runStateT (requestThread socket) defaultStats
+runWorker host port = void . P.connect host (show port) $ \(socket, _) -> 
+  runStateT (requestThread socket) defaultStats
 
 -- | Initiate pipeline connected to the given socket.
 --   This function will either terminate, or throw an exception, on failure.
 requestThread
   :: Socket
   -> MWorker ()
-requestThread socket = void . runProxy . runStateK [] . runEitherK $ worker
+requestThread socket = void . P.runEffect $ worker
   where
   worker = 
-       hoist lift . readPacket socket          -- read request from backend
-    >-> liftP . hoist lift . execD (putStrLn "[proxy] readPacket done")
-    >-> liftP . mapMD handleRequest             -- generate reply packet
-    >-> liftP . hoist lift . writePacket socket -- transmit reply to backend
+        readPacket socket          -- read request from backend
+    >-> P.mapM handleRequest       -- generate reply packet
+    >-> writePacket socket         -- transmit reply to backend
 
-  -- TODO: Verify if this implementation of readPacket actually is correct
-  --       Might be the root cause behind limited packet propagation
   readPacket sock =
-        N.socketReadS 4096 sock
-    >-> execD (putStrLn "[proxy] socketReadS returned")
-    >-> useD (\cont -> putStrLn $ "[proxy] socketReadS resulted in: " <> (show $ B.length cont))
-    >-> mapD Just
-    >-> decodeD
+        P.decodeMany (P.fromSocket sock 4096)
+    >-> P.map snd
 
   writePacket sock =
-        encodeD
-    >-> N.socketWriteD sock
+        P.for P.cat P.encode
+    >-> P.toSocket sock
 
 -- | Handle request from backend and generate a reply packet.
 handleRequest
   :: ProxyRequest
   -> MWorker ProxyResponse
-
 handleRequest (MarketRequest site path trade order timeout') = do
   let prependPath = (<> "/" <> path)
   market <- lift $ getMarket
@@ -118,7 +113,6 @@ getMarket
   -> MicroSeconds
   -> IO (Maybe MarketReplyDetails)
 getMarket site tradePath orderPath allowance = do
-  putStrLn "[proxy] runnning getMarket upon request"
   preConnectTime <- T.getCurrentTime
   blockExceptions . checkTimeout . withConn $ \conn -> do
     trades <- retrieve conn tradePath

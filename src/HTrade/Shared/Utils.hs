@@ -14,6 +14,7 @@ import HTrade.Shared.Types
 backendPort :: Word16
 backendPort = 1111
 
+-- | Terminate the pipeline upon receiving 'Data.Maybe.Nothing'.
 terminateD
   :: Monad m
   => Pipe (Maybe a) a m ()
@@ -23,7 +24,7 @@ terminateD = do
     Just a -> yield a >> terminateD
     Nothing -> return ()
 
--- todo: replace
+-- | Apply a function if the supplied value isn't 'Data.Maybe.Nothing'.
 onJust
   :: Monad m
   => Maybe a
@@ -32,7 +33,7 @@ onJust
 onJust Nothing _ = return Nothing
 onJust (Just val) f = f val
 
--- Evaluate an IO action and catch ANY exceptions in an either value.
+-- | Evaluate an IO action and catch ANY exceptions in an either value.
 tryAny :: IO a -> IO (Either E.SomeException a)
 tryAny action = A.withAsync action A.waitCatch
 

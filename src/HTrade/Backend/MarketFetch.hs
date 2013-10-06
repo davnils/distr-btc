@@ -8,8 +8,8 @@ import Control.Monad.Base
 import Control.Monad.Trans
 import Control.Monad.Trans.Control
 import qualified Control.Monad.Trans.State       as S
-import Control.Proxy.Concurrent
 import Data.Foldable (mapM_)
+import qualified Pipes.Concurrent                as P
 import Prelude hiding (mapM_)
 
 import qualified HTrade.Backend.ProxyLayer       as PL
@@ -58,9 +58,10 @@ worker conf = forever $ do
         (_marketOrders conf)
         defaultMarketTimeout
 
+  -- TODO: Investigate type-level reply difference
   parseReply (MarketReply Nothing)      = marketDisconnect conf
   parseReply (MarketReply (Just reply)) = handleReply conf reply
-  parseReply _      = return () -- TODO: Investigate type-level reply difference
+  parseReply _      = return ()
 
 -- | Function executed when a market disconnect has been detected.
 marketDisconnect
@@ -78,19 +79,21 @@ handleReply
   => MarketConfiguration
   -> MarketReplyDetails
   -> PL.MProxyT m ()
-handleReply market reply = liftBase $ putStrLn
-  "--------------------\n[MarketFetch] Received reply" >> print market >> print reply
+handleReply market reply = liftBase $ do
+  putStrLn "--------------------\n[MarketFetch] Received reply "
+  print market
+  print (length $ show reply)
 
 -- | Separate thread which corresponds to a single market.
 --   Handles updated configurations and other external requests.
 marketThread
   :: (MonadBase IO m, MonadBaseControl IO m)
-  => Output ControlMessage
+  => P.Input ControlMessage
   -> PL.MProxyT m ()
 marketThread messageQueue = void $
   S.runStateT threadLoop $ MarketState Nothing Nothing
   where
-  threadLoop = liftBase (atomically $ recv messageQueue) >>= mapM_ handleMessage
+  threadLoop = liftBase (P.atomically $ P.recv messageQueue) >>= mapM_ handleMessage
 
   handleMessage (LoadConfiguration conf) = do
     terminateWorker

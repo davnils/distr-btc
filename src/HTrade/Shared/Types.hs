@@ -8,8 +8,8 @@ import Data.Word (Word)
 import GHC.Generics (Generic)
 
 type ProxyVersion = (Int, Int)
-type MarketTrade = B.ByteString -- TODO
-type MarketOrderBook = B.ByteString -- TODO
+type MarketTrade = B.ByteString
+type MarketOrderBook = B.ByteString
 
 data ProxyRequest
  = MarketRequest

@@ -1,6 +1,11 @@
-{-# Language FlexibleContexts, FlexibleInstances, GeneralizedNewtypeDeriving, MultiParamTypeClasses, Rank2Types, TypeFamilies, UndecidableInstances #-}
-
--- TODO: Check necessity of language pragmas
+{-# Language
+  FlexibleContexts,
+  FlexibleInstances,
+  GeneralizedNewtypeDeriving,
+  MultiParamTypeClasses,
+  Rank2Types,
+  TypeFamilies,
+  UndecidableInstances #-}
 
 module HTrade.Backend.ProxyLayer (
   MProxyT,
@@ -13,9 +18,7 @@ module HTrade.Backend.ProxyLayer (
   sampleNode
 ) where
 
-import qualified Data.Binary                 as BI
-import qualified Data.ByteString.Char8       as B
-import qualified Data.ByteString.Lazy.Char8  as BL
+import Data.Monoid ((<>))
 import Control.Applicative
 import qualified Control.Concurrent.Async    as C
 import Control.Concurrent (threadDelay)
@@ -25,20 +28,15 @@ import Control.Monad.Base
 import Control.Monad.Trans
 import Control.Monad.Trans.Control
 import qualified Control.Monad.Reader        as R
-import qualified Control.Monad.State         as S
-import qualified Data.Binary as DB --TODO: needed?
 import qualified Data.Map                    as M
-import Data.Binary (Binary)
 import Data.Maybe (fromMaybe)
 import Data.Word (Word16)
-import qualified Network.Simple.TCP          as NS
-import Network.Socket (Socket)
 import Pipes ((>->))
 import qualified Pipes                       as P
 import qualified Pipes.Binary                as P
 import qualified Pipes.Concurrent            as P
 import qualified Pipes.Prelude               as P
-import qualified Pipes.Network.TCP           as N
+import qualified Pipes.Network.TCP           as P hiding (recv, send)
 import System.Random (randomIO)
 import System.Timeout (timeout)
 
@@ -47,10 +45,10 @@ import HTrade.Shared.Types
 import HTrade.Shared.Utils
 
 -- | Type of a worker thread stored in the globally shared thread map.
-type WorkerThread = P.Input (Maybe (ProxyRequest, WorkerThreadQueryState))
+type WorkerThread = P.Output (Maybe (ProxyRequest, WorkerThreadQueryState))
 
 -- | Type of state used in pipeline.
-type WorkerThreadQueryState = P.Input (Maybe ProxyResponse)
+type WorkerThreadQueryState = P.Output (Maybe ProxyResponse)
 
 -- | Internal state used in monad transformer, stores a globally shared map.
 type InternalState = TVar (M.Map WorkerIdentifier WorkerThread)
@@ -132,75 +130,45 @@ withLayer port routine = do
   where
   listener threadState =
     -- start accepting connections
-    N.serve N.HostAny (show port) $ \(socket, addr) -> do
+    P.serve P.HostAny (show port) $ \(socket, addr) -> do
       -- serve each proxy node in a separate thread
 
-      liftBase $ putStrLn "accepted new proxy connection"
-
       let threadID = addr
-      (localInput, localOutput) <- P.spawn P.Single
+      (outputTransmit, inputTransmit) <- P.spawn P.Single
+      (outputReceive, inputReceive) <- P.spawn P.Single
       atomically $
-        modifyTVar' threadState $ M.insert threadID localInput
+        modifyTVar' threadState $ M.insert threadID (outputTransmit <> outputReceive)
 
-      -- execute pipeline which:
-      -- (1) reads a local request
-      -- (2) submits the corresponding request packet
-      -- (2) retrieves the result and notifies the original query
-
-      void . tryAny . P.runEffect $ 
-          P.fromInput localOutput
+      threadTransmit <- C.async . tryAny . P.runEffect $ 
+            P.fromInput inputTransmit
         >-> terminateD
-        >-> saveInputD
-        >-> P.mapM (\cont -> putStrLn ("encoded " ++ (show $ BL.length $ DB.encode cont) ++ " bytes") >> return cont)
-        >-> P.encode
-        >-> P.mapM (\cont -> putStrLn ("Transmitting " ++ (show $ B.length cont) ++ " bytes") >> return cont)
-        >-> liftIO . N.toSocket socket
-        >-> getPacketD socket
-        >-> saveResponseD
+        >-> P.map fst
+        >-> P.for P.cat P.encode
+        >-> P.toSocket socket
+
+      threadReceive <- C.async . tryAny . P.runEffect $ 
+            P.decodeMany (P.fromSocket socket 4096)
+        >-> P.map snd
+        >-> saveResponse inputReceive
+
+      _ <- C.waitAnyCatchCancel [void threadTransmit, void threadReceive]
 
       -- cleanup thread pool upon termination
       atomically $
         modifyTVar' threadState $ M.delete threadID
       P.performGC
 
-      liftBase $ putStrLn "removed proxy connection"
-
-{- saveInputD
-  :: (Monad m, Proxy p)
-  => a
-  -> PS.StateP s p () (q, s) a q m r -}
-saveInputD _ = do
-  (req, input) <- P.await
-  S.put input
-  P.yield req >>= saveInputD
-
-{- getPacketD
-  :: (Binary b, MonadIO m, Proxy p)
-  => Socket
-  -> b'
-  -> p () x b' b m r -}
-getPacketD socket = go socket
-  where
-  go sock _ = do
-    _ <- P.await
-    liftIO (retrievePacket B.empty) >>= P.yield >>= go sock
-
-  retrievePacket acc = do
-    Just rx <- fmap join . timeout (fromIntegral proxyTimeout) $ NS.recv socket 4096
-    let total = B.append acc rx
-    case BI.decodeOrFail (BL.fromChunks [total]) of
-      Right (_, _, obj) -> return obj
-      Left _ -> retrievePacket total
-
-{- saveResponseD
-  :: (MonadIO m, Proxy p)
-  => a
-  -> PS.StateP WorkerThreadQueryState p () ProxyResponse a ProxyResponse m r -}
-saveResponseD _ = do
+saveResponse
+  :: MonadIO m
+  => P.Input (Maybe (ProxyRequest, WorkerThreadQueryState))
+  -> P.Consumer ProxyResponse m b
+saveResponse input = forever $ do
   reply <- P.await
-  output <- S.get
-  void . liftIO . atomically $ check <$> P.send output (Just reply)
-  P.yield reply >>= saveResponseD
+  output <- liftM join . liftIO . atomically . P.recv $ input
+  case output of
+    Nothing -> return ()
+    Just (_, output') -> do
+      void . liftIO . atomically $ check <$> P.send output' (Just reply)
 
 -- | Execute a query on the proxy layer.
 --   If no proxy node is given then a random sample is taken from the pool.
@@ -213,7 +181,6 @@ query
   -> ProxyRequest
   -> MProxyT m (Maybe ProxyResponse)
 query addr' timeout' req = do
-  liftBase $ putStrLn "Running query"
   let timeout'' = fromMaybe defaultTimeout timeout' -- TODO: USE!
   let getWorker = fromMaybe sampleNode $ return . Just <$> addr'
 
@@ -231,7 +198,6 @@ query addr' timeout' req = do
 
   -- run a query on the given address, may fail with Nothing
   runQuery addr = do
-    liftBase $ putStrLn "Running runQuery"
     thread <- R.ask >>= liftBase . atomically . liftM (M.lookup addr) . readTVar
     (localInput, localOutput) <- liftBase $ P.spawn P.Single
     onJust thread $ \remote -> liftBase $ do
