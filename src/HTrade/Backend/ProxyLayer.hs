@@ -37,7 +37,7 @@ import qualified Pipes.Binary                as P
 import qualified Pipes.Concurrent            as P
 import qualified Pipes.Prelude               as P
 import qualified Pipes.Network.TCP           as P hiding (recv, send)
-import System.Random (randomIO)
+import System.Random (randomRIO)
 import System.Timeout (timeout)
 
 import HTrade.Backend.Types
@@ -245,13 +245,13 @@ mapLayer f = do
   return . M.fromList $ zip addrs mapped
 
 -- | Retrieve a randomly sampled node from the worker pool.
---   Note: Not statistically uniform since it uses (`mod` poolSize).
 sampleNode
   :: MonadBase IO m
   => MProxyT m (Maybe WorkerIdentifier)
 sampleNode = R.ask >>= liftBase . atomically . readTVar >>= \workers -> do
-  rand <- liftBase randomIO
   let workerSize = M.size workers
-  return $ case workerSize of
-    0 -> Nothing
-    _ -> Just . fst $ M.elemAt (rand `mod` workerSize) workers
+  case workerSize of
+    0 -> return Nothing
+    _ -> do
+      rand <- liftBase $ randomRIO (0, workerSize - 1)
+      return . Just . fst $ M.elemAt rand workers
