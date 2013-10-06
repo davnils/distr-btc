@@ -7,7 +7,9 @@ module HTrade.Backend.Configuration (
   MConfigT, 
   withConfiguration,
   loadConfigurations,
-  parseConfigurationFile
+  parseConfigurationFile,
+  terminateLoadedMarkets,
+  getLoadedMarkets
 ) where
 
 import Control.Applicative (Applicative, (<$>))
@@ -139,3 +141,19 @@ parseConfigurationFile path = runMaybeT $ do
     (get "trades")
     (get "orderbook")
     (get "interval")
+
+-- | Terminate all active market threads, no synchronization guarantees.
+terminateLoadedMarkets
+  :: MonadIO m
+  => MConfigT m ()
+terminateLoadedMarkets = do
+  channels <- liftM M.elems S.get
+  forM_ channels $ \out ->
+    liftIO . P.atomically $ P.send out Shutdown
+  S.put M.empty
+
+-- | Retrieve list of all currently loaded markets (based on snapshot).
+getLoadedMarkets
+  :: MonadIO m
+  => MConfigT m [MarketIdentifier]
+getLoadedMarkets = liftM M.keys S.get
