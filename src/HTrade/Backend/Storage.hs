@@ -21,10 +21,10 @@ marketRawTable = "market_raw"
 marketRawDataSchema :: Text
 marketRawDataSchema  = "(\
   \id uuid primary key,\
-  \market text,\
+  \market ascii,\
   \retrieved timestamp,\
   \orderbook blob,\
   \trades blob,\
-  \elapsed timestamp\
+  \elapsed int\
 \)"
 

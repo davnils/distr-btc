@@ -1,18 +1,24 @@
-{-# Language FlexibleContexts #-}
+{-# Language DataKinds, FlexibleContexts, OverloadedStrings #-}
 
 module HTrade.Backend.MarketFetch where
 
 import qualified Control.Concurrent.Async.Lifted as C
+import qualified Control.Error                   as E
 import Control.Monad hiding (mapM_)
 import Control.Monad.Base
 import Control.Monad.Trans
 import Control.Monad.Trans.Control
 import qualified Control.Monad.Trans.State       as S
 import Data.Foldable (mapM_)
+import Data.Monoid ((<>))
+import Data.Time.Clock (getCurrentTime)
+import Data.UUID.V4 (nextRandom)
+import qualified Database.Cassandra.CQL          as DB
 import qualified Pipes.Concurrent                as P
 import Prelude hiding (mapM_)
 
 import qualified HTrade.Backend.ProxyLayer       as PL
+import qualified HTrade.Backend.Storage          as DB
 import HTrade.Backend.Types
 import HTrade.Shared.Types
 import HTrade.Shared.Utils
@@ -43,8 +49,9 @@ defaultMarketTimeout = seconds 5
 worker
   :: MonadBase IO m
   => MarketConfiguration
+  -> DB.Pool
   -> PL.MProxyT m ()
-worker conf = forever $ do
+worker conf pool = forever $ do
   res <- PL.query Nothing (Just defaultMarketTimeout) marketReq
   case res of
     Nothing -> delay $ seconds 1
@@ -60,7 +67,7 @@ worker conf = forever $ do
 
   -- TODO: Investigate type-level reply difference
   parseReply (MarketReply Nothing)      = marketDisconnect conf
-  parseReply (MarketReply (Just reply)) = handleReply conf reply
+  parseReply (MarketReply (Just reply)) = handleReply pool conf reply
   parseReply _      = return ()
 
 -- | Function executed when a market disconnect has been detected.
@@ -71,18 +78,32 @@ marketDisconnect
 marketDisconnect _ = liftBase $ putStrLn "[MarketFetch] market considered disconnected"
 
 -- | Function executed when a market reply has been received.
---
---   TODO: Should run an arbitrary monadic action on the details package
---         Could also supply an action which is executed when market-disconnect is detected.
 handleReply
   :: MonadBase IO m
-  => MarketConfiguration
+  => DB.Pool
+  -> MarketConfiguration
   -> MarketReplyDetails
   -> PL.MProxyT m ()
-handleReply market reply = liftBase $ do
-  putStrLn "--------------------\n[MarketFetch] Received reply "
-  print market
-  print (length $ show reply)
+handleReply pool market reply = liftBase $ do
+  uuid <- nextRandom
+  now <- getCurrentTime
+
+  let inserted = (
+        uuid,
+        _marketName $ _marketIdentifier market,
+        now,
+        DB.Blob $ _orderBook reply,
+        DB.Blob $ _trades reply,
+        fromIntegral (_responseTime reply) :: Int)
+
+  res <- E.runEitherT $ E.syncIO (DB.runCas pool $ DB.executeWrite DB.QUORUM (DB.query query') inserted)
+  case res of
+    Left err -> print err
+    _ -> return ()
+
+  where
+  query' = "insert into " <> DB.marketRawTable <>
+           " (id, market, retrieved, orderbook, trades, elapsed) values (?, ?, ?, ?, ?, ?)"
 
 -- | Separate thread which corresponds to a single market.
 --   Handles updated configurations and other external requests.
@@ -90,17 +111,22 @@ marketThread
   :: (MonadBase IO m, MonadBaseControl IO m)
   => P.Input ControlMessage
   -> PL.MProxyT m ()
-marketThread messageQueue = void $
-  S.runStateT threadLoop $ MarketState Nothing Nothing
+marketThread messageQueue = do
+  pool <- liftBase $ DB.newPool
+    [(DB.cassandraHost, DB.cassandraPort)]
+    DB.marketKeyspace
+
+  void $ S.evalStateT (threadLoop pool) $ MarketState Nothing Nothing
   where
-  threadLoop = liftBase (P.atomically $ P.recv messageQueue) >>= mapM_ handleMessage
+  threadLoop pool =
+    liftBase (P.atomically $ P.recv messageQueue) >>= mapM_ (handleMessage pool)
 
-  handleMessage (LoadConfiguration conf) = do
+  handleMessage pool (LoadConfiguration conf) = do
     terminateWorker
-    thread <- lift . C.async $ worker conf
+    thread <- lift . C.async $ worker conf pool
     S.put $ MarketState (Just $ C.cancel thread) (Just conf)
-    threadLoop
+    threadLoop pool
 
-  handleMessage Shutdown = terminateWorker
+  handleMessage _ Shutdown = terminateWorker
  
   terminateWorker = S.get >>= mapM_ lift . _cancelWorker
