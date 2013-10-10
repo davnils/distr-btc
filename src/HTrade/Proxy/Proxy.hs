@@ -6,8 +6,10 @@ module HTrade.Proxy.Proxy where
 
 import Control.Applicative ((<$>))
 import qualified Control.Exception           as E
+import qualified Control.Error               as E
 import Control.Monad.State
 import qualified Data.ByteString.Char8       as B
+import Data.List (intersperse)
 import Data.Monoid ((<>))
 import qualified Data.Monoid.Statistics      as MS
 import qualified Data.Monoid.Statistics.Numeric as MSN
@@ -81,7 +83,9 @@ handleRequest
   :: ProxyRequest
   -> MWorker ProxyResponse
 handleRequest (MarketRequest site path trade order timeout') = do
-  let prependPath = (<> "/" <> path)
+  let nonEmpty = filter (/= B.empty)
+      prependPath suffix = ("/" <>) . B.concat . intersperse "/" $ nonEmpty [path, suffix]
+
   market <- lift $ getMarket
     site
     (prependPath trade)
@@ -132,8 +136,8 @@ getMarket site tradePath orderPath allowance = do
 
   retrieve conn path = do
     req <- H.buildRequest $ do
-      H.http H.GET (site <> path)
-      H.setAccept "text/html"
+      H.http H.GET path
+      H.setAccept "*/*"
 
     H.sendRequest conn req H.emptyBody
     H.receiveResponse conn H.concatHandler' 

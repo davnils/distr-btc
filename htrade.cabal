@@ -73,30 +73,31 @@ executable htrade-proxy
   hs-source-dirs:    src
   main-is:           HTrade/Proxy/Main.hs
   other-modules:     HTrade.Proxy.Proxy
-  ghc-options:       -O2 -Wall
+  ghc-options:       -O2 -Wall -threaded
   
-  build-depends:     base == 4.*,
+  build-depends:     async == 2.0.*,
+                     base == 4.*,
+                     binary == 0.7.*,
+                     bytestring >= 0.9.2.1 && < 0.11,
+                     containers >= 0.4 && < 0.6,
+                     errors == 1.4.*,
+                     ghc-prim >= 0.2 && < 0.4,
+                     http-streams == 0.6.*,
+                     HsOpenSSL == 0.10.*,
+                     http-streams == 0.6.*,
+                     monad-control == 0.3.*,
+                     monoid-statistics == 0.3.*,
+                     mtl == 2.1.*,
+                     network == 2.4.*,
+                     pipes-concurrency == 2.0.*,
                      pipes == 4.0.*,
                      pipes-binary == 0.2.*,
                      pipes-network == 0.6.*,
                      pipes-safe == 2.0.*,
-                     binary == 0.7.*,
-                     bytestring >= 0.9.2.1 && < 0.11,
-                     http-streams == 0.6.*,
-                     network == 2.4.*,
-                     stm == 2.4.*,
-                     pipes-concurrency == 2.0.*,
-                     mtl == 2.1.*,
-                     containers >= 0.4 && < 0.6,
-                     ghc-prim >= 0.2 && < 0.4,
-                     async == 2.0.*,
                      random == 1.0.*,
-                     http-streams == 0.6.*,
-                     errors == 1.4.*,
+                     stm == 2.4.*,
                      time == 1.4.*,
-                     monoid-statistics == 0.3.*,
-                     transformers-base == 0.4.*,
-                     monad-control == 0.3.*
+                     transformers-base == 0.4.*
 
 executable htrade-admin
   hs-source-dirs:    src
