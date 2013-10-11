@@ -8,8 +8,8 @@ import Data.Word (Word)
 import GHC.Generics (Generic)
 
 type ProxyVersion = (Int, Int)
-type MarketTrade = B.ByteString
-type MarketOrderBook = B.ByteString
+type TradesSerialized = B.ByteString
+type OrderBookSerialized = B.ByteString
 
 data ProxyRequest
  = MarketRequest
@@ -56,8 +56,8 @@ data MarketReplyDetails
  = MarketReplyDetails
    {
      _responseTime            :: MicroSeconds,
-     _trades                  :: MarketTrade,
-     _orderBook               :: MarketOrderBook
+     _trades                  :: TradesSerialized,
+     _orderBook               :: OrderBookSerialized
    }
  deriving (Eq, Generic, Show)
 

@@ -9,6 +9,8 @@ import Control.Monad.Base
 import Control.Monad.Trans
 import Control.Monad.Trans.Control
 import qualified Control.Monad.Trans.State       as S
+import qualified Data.Aeson                      as A
+import qualified Data.ByteString.Lazy.Char8      as BL
 import Data.Foldable (mapM_)
 import Data.Monoid ((<>))
 import Data.Time.Clock (getCurrentTime)
@@ -84,11 +86,12 @@ handleReply
   -> MarketConfiguration
   -> MarketReplyDetails
   -> PL.MProxyT m ()
-handleReply pool market reply = liftBase $ do
-  uuid <- nextRandom
-  now <- getCurrentTime
+handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ do
+  uuid <- lift nextRandom
+  now <- lift getCurrentTime
+  parsedOrders <- E.noteT "Failed to parse orderbook" . E.hoistMaybe $ decodeOrderBook
 
-  let inserted = (
+  let rawInsert = (
         uuid,
         _marketName $ _marketIdentifier market,
         now,
@@ -96,14 +99,30 @@ handleReply pool market reply = liftBase $ do
         DB.Blob $ _trades reply,
         fromIntegral (_responseTime reply) :: Int)
 
-  res <- E.runEitherT $ E.syncIO (DB.runCas pool $ DB.executeWrite DB.QUORUM (DB.query query') inserted)
-  case res of
-    Left err -> print err
-    _ -> return ()
+  let orderInsert = (
+        _marketName $ _marketIdentifier market,
+        now,
+        _asks parsedOrders,
+        _bids parsedOrders
+        )
+
+  E.fmapLT show . E.syncIO . DB.runCas pool $ do
+    write rawQuery rawInsert
+    write orderQuery orderInsert 
 
   where
-  query' = "insert into " <> DB.marketRawTable <>
-           " (id, market, retrieved, orderbook, trades, elapsed) values (?, ?, ?, ?, ?, ?)"
+  rawQuery = "insert into " <> DB.marketRawTable <>
+             " (id, market, retrieved, orderbook, trades, elapsed) values (?, ?, ?, ?, ?, ?)"
+
+  orderQuery = "insert into " <> DB.marketOrderBookTable <>
+               " (market, retrieved, asks, bids) values (?, ?, ?, ?)"
+
+  write query = DB.executeWrite DB.QUORUM (DB.query query)
+
+  decodeOrderBook = A.decode' . BL.fromStrict $ _orderBook reply
+
+  checkError (Left err) = print err
+  checkError _ = return ()
 
 -- | Separate thread which corresponds to a single market.
 --   Handles updated configurations and other external requests.

@@ -41,14 +41,16 @@ executable htrade-backend
   other-modules:     HTrade.Backend.Types, HTrade.Backend.ProxyLayer, HTrade.Backend.MarketFetch, HTrade.Backend.Configuration, HTrade.Backend.Storage
   ghc-options:       -O2 -Wall
   
-  build-depends:     base == 4.*,
-                     async == 2.0.*,
+  build-depends:     async == 2.0.*,
+                     aeson == 0.6.*,
+                     base == 4.*,
                      binary == 0.7.*,
                      bytestring >= 0.9.2.1 && < 0.11,
                      cassandra-cql == 0.3.*,
                      configurator == 0.2.*,
                      containers >= 0.4 && < 0.6,
                      directory == 1.2.*,
+                     Decimal == 0.3.*,
                      errors == 1.4.*,
                      ghc-prim >= 0.2 && < 0.4,
                      lifted-async == 0.1.*,
@@ -67,7 +69,8 @@ executable htrade-backend
                      time == 1.4.*,
                      transformers == 0.3.*,
                      transformers-base == 0.4.*,
-                     uuid == 1.2.*
+                     uuid == 1.2.*,
+                     vector == 0.10.*
 
 executable htrade-proxy
   hs-source-dirs:    src

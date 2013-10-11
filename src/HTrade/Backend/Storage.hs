@@ -28,3 +28,13 @@ marketRawDataSchema  = "(\
   \elapsed int\
 \)"
 
+marketOrderBookTable :: Text
+marketOrderBookTable = "market_orders"
+
+marketOrderBookSchema :: Text
+marketOrderBookSchema = "(\
+\  market ascii primary key,\
+\  retrieved timestamp,\
+\  asks list<blob>,\
+\  bids list<blob>\
+\)"
