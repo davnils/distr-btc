@@ -13,7 +13,7 @@ import qualified Data.Aeson                      as A
 import qualified Data.ByteString.Lazy.Char8      as BL
 import Data.Foldable (mapM_)
 import Data.Monoid ((<>))
-import Data.Time.Clock (getCurrentTime)
+import Data.Time.Clock (getCurrentTime, utctDayTime)
 import Data.UUID.V4 (nextRandom)
 import qualified Database.Cassandra.CQL          as DB
 import qualified Pipes.Concurrent                as P
@@ -101,6 +101,7 @@ handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ d
 
   let orderInsert = (
         _marketName $ _marketIdentifier market,
+        now { utctDayTime = 0 },
         now,
         _asks parsedOrders,
         _bids parsedOrders
@@ -115,7 +116,7 @@ handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ d
              " (id, market, retrieved, orderbook, trades, elapsed) values (?, ?, ?, ?, ?, ?)"
 
   orderQuery = "insert into " <> DB.marketOrderBookTable <>
-               " (market, retrieved, asks, bids) values (?, ?, ?, ?)"
+               " (market, day, retrieved, asks, bids) values (?, ?, ?, ?, ?)"
 
   write query = DB.executeWrite DB.QUORUM (DB.query query)
 

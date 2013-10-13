@@ -33,8 +33,10 @@ marketOrderBookTable = "market_orders"
 
 marketOrderBookSchema :: Text
 marketOrderBookSchema = "(\
-\  market ascii primary key,\
+\  market ascii,\
+\  day timestamp,\
 \  retrieved timestamp,\
 \  asks list<blob>,\
-\  bids list<blob>\
-\)"
+\  bids list<blob>,\
+\  primary key ((market, day), retrieved)\
+\) with clustering order by (retrieved desc)"
