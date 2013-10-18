@@ -19,7 +19,8 @@ tables =
     (marketOrderBookTable, marketOrderBookSchema),
     (marketTradesTable, marketTradesSchema),
     (marketLastTradeTable, marketLastTradeSchema),
-    (marketTradesDayTable, marketTradesDaySchema)
+    (marketTradesDayTable, marketTradesDaySchema),
+    (marketStatusTable, marketStatusSchema)
   ]
 
 createSchema = forM_ tables $ \(table, schema) -> 

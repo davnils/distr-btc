@@ -20,7 +20,7 @@ import Data.Int (Int64)
 import Data.List (partition)
 import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>))
-import Data.Time.Clock (getCurrentTime, utctDay, utctDayTime)
+import Data.Time.Clock (getCurrentTime, UTCTime, utctDay, utctDayTime)
 import Data.UUID.V4 (nextRandom)
 import qualified Database.Cassandra.CQL          as DB
 import qualified Pipes.Concurrent                as P
@@ -83,17 +83,39 @@ worker conf pool = forever $ do
   lastTradeQuery = DB.query "select trade from market_last_trade where market=?"
   defaultZero = fromMaybe (0 :: TradeID)
 
-  -- TODO: Investigate type-level reply difference
-  parseReply (MarketReply Nothing)      = marketDisconnect conf
+  parseReply (MarketReply Nothing)      = marketDisconnect pool conf
   parseReply (MarketReply (Just reply)) = handleReply pool conf reply
   parseReply _      = return ()
+
+-- | Store the current status of a market (either active or disconnected).
+writeMarketStatus
+  :: DB.MonadCassandra m
+  => MarketIdentifier
+  -> MarketStatus
+  -> UTCTime
+  -> m ()
+writeMarketStatus market status now =
+  DB.executeWrite DB.ONE (DB.query statusQuery) statusInsert
+  where
+  statusInsert = (
+    _marketName market,
+    now { utctDayTime = 0 },
+    now,
+    status
+    )
+
+  statusQuery = "insert into " <> DB.marketStatusTable <>
+               " (market, day, time, status) values (?, ?, ?, ?)"
 
 -- | Function executed when a market disconnect has been detected.
 marketDisconnect
   :: MonadBase IO m
-  => MarketConfiguration
+  => DB.Pool
+  -> MarketConfiguration
   -> PL.MProxyT m ()
-marketDisconnect _ = liftBase $ putStrLn "[MarketFetch] market considered disconnected"
+marketDisconnect pool conf = liftBase $ do
+  time <- getCurrentTime
+  DB.runCas pool $ writeMarketStatus (_marketIdentifier conf) marketInactive time
 
 -- | Function executed when a market reply has been received.
 handleReply
@@ -132,6 +154,7 @@ handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ d
     write rawQuery rawInsert
     write orderQuery orderInsert 
     processTrades (_marketIdentifier market) parsedTrades
+    writeMarketStatus (_marketIdentifier market) marketActive now
 
   where
   rawQuery = "insert into " <> DB.marketRawTable <>

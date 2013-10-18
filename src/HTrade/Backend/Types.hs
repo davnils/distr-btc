@@ -136,3 +136,11 @@ instance Binary (DecimalRaw Integer) where
     put mantissa
 
   get = Decimal <$> get <*> get
+
+type MarketStatus = Int
+
+marketActive :: MarketStatus
+marketActive = 1
+
+marketInactive :: MarketStatus
+marketInactive = 0

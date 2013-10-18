@@ -77,3 +77,15 @@ marketTradesDaySchema = "(\
 \  last bigint,\
 \  primary key (market, day)\
 \)"
+
+marketStatusTable :: Text
+marketStatusTable = "market_status"
+
+marketStatusSchema :: Text
+marketStatusSchema = "(\
+\  market ascii,\
+\  day timestamp,\
+\  time timestamp,\
+\  status int,\
+\  primary key ((market, day), time)\
+\) with clustering order by (time desc)"
