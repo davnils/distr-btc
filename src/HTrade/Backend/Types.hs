@@ -13,11 +13,14 @@ import Control.Applicative ((<*>), (<$>))
 import Control.Monad (guard, mzero)
 import qualified Data.Aeson                  as A
 import Data.Aeson ((.=), (.:))
+import Data.Attoparsec.Number (Number (..))
 import Data.Binary (Binary(..))
 import qualified Data.Binary                 as BIN
 import qualified Data.ByteString.Char8       as B
 import qualified Data.ByteString.Lazy.Char8  as BL
 import Data.Decimal (DecimalRaw(..), Decimal, realFracToDecimal)
+import Data.Time.Clock (NominalDiffTime, UTCTime)
+import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
 import qualified Data.Vector                 as V
 import Data.Word (Word8)
 import Database.Cassandra.CQL
@@ -70,6 +73,19 @@ data MarketOrderBook
    }
    deriving (Eq, Ord, Show)
 
+data TradeEntry
+ = TradeEntry
+   {
+     _time                    :: !UTCTime,
+     _price                   :: !Decimal,
+     _amount                  :: !Decimal,
+     _transactionID           :: !TradeID
+   }
+   deriving (Eq, Ord, Show)
+
+newtype Trades = Trades [TradeEntry]
+   deriving (Eq, Ord, Show)
+
 instance A.FromJSON Decimal where
   parseJSON doc = do
     (val :: Double) <- A.parseJSON doc
@@ -89,6 +105,18 @@ instance A.FromJSON MarketOrderBook where
     <$> o .: "asks"
     <*> o .: "bids"
 
+  parseJSON _ = mzero
+
+instance A.FromJSON Trades where
+  parseJSON (A.Array o) = Trades . toUTC <$> V.mapM A.parseJSON o
+    where
+    toUTC = V.toList . V.map convertToUTC
+    convertToUTC (a1, a2, a3, a4) = TradeEntry (posixSecondsToUTCTime a1) a2 a3 a4
+
+  parseJSON _ = mzero
+
+instance A.FromJSON NominalDiffTime where
+  parseJSON (A.Number (I t)) = return $ fromIntegral t
   parseJSON _ = mzero
 
 instance A.ToJSON Decimal where

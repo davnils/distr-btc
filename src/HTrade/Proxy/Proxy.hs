@@ -40,6 +40,9 @@ proxyVersion  = (0, 1)
 timerPrecision :: Int
 timerPrecision = 10^(6 :: Int)
 
+tradeIDParam :: B.ByteString
+tradeIDParam = "since"
+
 -- | While not killed by an asynchronous exception, repeatedly connect to backend.
 --   Any internal failures (such as lost backend connection) will result in a
 --   new connection being established.
@@ -82,14 +85,14 @@ requestThread socket = void . P.runEffect $ worker
 handleRequest
   :: ProxyRequest
   -> MWorker ProxyResponse
-handleRequest (MarketRequest site path trade order timeout') = do
+handleRequest (MarketRequest site path trade order timeout' tradeID) = do
   let nonEmpty = filter (/= B.empty)
       prependPath suffix = ("/" <>) . B.concat . intersperse "/" $ nonEmpty [path, suffix]
 
   market <- lift $ getMarket
     site
     (prependPath trade)
-    (prependPath order)
+    (prependPath order <> "?" <> tradeIDParam <> "=" <> B.pack (show tradeID))
     timeout'
 
   case market of

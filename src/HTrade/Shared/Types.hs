@@ -4,12 +4,14 @@ module HTrade.Shared.Types where
 
 import qualified Data.ByteString.Char8       as B
 import Data.Binary (Binary)
+import Data.Int (Int64)
 import Data.Word (Word)
 import GHC.Generics (Generic)
 
 type ProxyVersion = (Int, Int)
 type TradesSerialized = B.ByteString
 type OrderBookSerialized = B.ByteString
+type TradeID = Int64
 
 data ProxyRequest
  = MarketRequest
@@ -18,7 +20,8 @@ data ProxyRequest
      _targetPath              :: B.ByteString,
      _targetTradePath         :: B.ByteString,
      _targetOrderBookPath     :: B.ByteString,
-     _timeout                 :: MicroSeconds
+     _timeout                 :: MicroSeconds,
+     _tradeID                 :: TradeID
    }
  | StatusRequest
    {

@@ -1,4 +1,8 @@
-{-# Language DataKinds, FlexibleContexts, OverloadedStrings #-}
+{-# Language
+  DataKinds,
+  FlexibleContexts,
+  OverloadedStrings
+  #-}
 
 module HTrade.Backend.MarketFetch where
 
@@ -12,8 +16,11 @@ import qualified Control.Monad.Trans.State       as S
 import qualified Data.Aeson                      as A
 import qualified Data.ByteString.Lazy.Char8      as BL
 import Data.Foldable (mapM_)
+import Data.Int (Int64)
+import Data.List (partition)
+import Data.Maybe (fromMaybe)
 import Data.Monoid ((<>))
-import Data.Time.Clock (getCurrentTime, utctDayTime)
+import Data.Time.Clock (getCurrentTime, utctDay, utctDayTime)
 import Data.UUID.V4 (nextRandom)
 import qualified Database.Cassandra.CQL          as DB
 import qualified Pipes.Concurrent                as P
@@ -43,6 +50,10 @@ data MarketState m
 defaultMarketTimeout :: MicroSeconds
 defaultMarketTimeout = seconds 5
 
+-- | Number of trades stored clustered on a single row in Cassandra.
+tradeGroupSize :: Int64
+tradeGroupSize = 10000
+
 -- TODO: Check relation between query-timeout and marketreq-timeout
 
 -- | Worker function executed in a separate thread.
@@ -54,7 +65,9 @@ worker
   -> DB.Pool
   -> PL.MProxyT m ()
 worker conf pool = forever $ do
-  res <- PL.query Nothing (Just defaultMarketTimeout) marketReq
+  lastTrade <- fmap defaultZero . liftBase . DB.runCas pool $
+    DB.executeRow DB.QUORUM lastTradeQuery market
+  res <- PL.query Nothing (Just defaultMarketTimeout) (marketReq lastTrade)
   case res of
     Nothing -> delay $ seconds 1
     Just reply -> parseReply reply >> delay (_marketInterval conf)
@@ -66,6 +79,9 @@ worker conf pool = forever $ do
         (_marketTrades conf)
         (_marketOrders conf)
         defaultMarketTimeout
+  market = _marketName $ _marketIdentifier conf
+  lastTradeQuery = DB.query "select trade from market_last_trade where market=?"
+  defaultZero = fromMaybe (0 :: TradeID)
 
   -- TODO: Investigate type-level reply difference
   parseReply (MarketReply Nothing)      = marketDisconnect conf
@@ -89,8 +105,12 @@ handleReply
 handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ do
   uuid <- lift nextRandom
   now <- lift getCurrentTime
-  parsedOrders <- E.noteT "Failed to parse orderbook" . E.hoistMaybe $ decodeOrderBook
 
+  -- Parse order book and trades from the provided JSON format.
+  parsedOrders <- decodeItem "Failed to parse orderbook" $ _orderBook reply
+  parsedTrades<- decodeItem "Failed to parse trades" $ _trades reply
+
+  -- Raw payload and order book insertion.
   let rawInsert = (
         uuid,
         _marketName $ _marketIdentifier market,
@@ -99,7 +119,7 @@ handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ d
         DB.Blob $ _trades reply,
         fromIntegral (_responseTime reply) :: Int)
 
-  let orderInsert = (
+      orderInsert = (
         _marketName $ _marketIdentifier market,
         now { utctDayTime = 0 },
         now,
@@ -107,9 +127,11 @@ handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ d
         _bids parsedOrders
         )
 
+  -- Run all Cassandra actions, including inserting all new trades.
   E.fmapLT show . E.syncIO . DB.runCas pool $ do
     write rawQuery rawInsert
     write orderQuery orderInsert 
+    processTrades (_marketIdentifier market) parsedTrades
 
   where
   rawQuery = "insert into " <> DB.marketRawTable <>
@@ -120,10 +142,51 @@ handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ d
 
   write query = DB.executeWrite DB.QUORUM (DB.query query)
 
-  decodeOrderBook = A.decode' . BL.fromStrict $ _orderBook reply
+  decodeItem msg = E.noteT msg . E.hoistMaybe . A.decode' . BL.fromStrict
 
   checkError (Left err) = print err
   checkError _ = return ()
+
+processTrades
+  :: DB.MonadCassandra m
+  => MarketIdentifier
+  -> Trades
+  -> m ()
+processTrades _ (Trades []) = return ()
+processTrades market (Trades trades) = do
+  -- Extract and partition w.r.t day of first trade
+  let getDay = utctDay . _time
+      processDay = getDay $ head trades
+      processDayZero = (_time $ head trades) { utctDayTime = 0 }
+      (current, future) = partition (\t -> getDay t == processDay) trades
+      lastTrade = last trades
+
+  -- Fetch and calculate new (first, last) trade identifiers for the day
+  res <- DB.executeRow DB.QUORUM (DB.query firstLastFetchQuery) (_marketName market, processDayZero)
+  let first' = fromMaybe (_transactionID $ head trades) res
+      last'  = _transactionID lastTrade
+
+  _ <- DB.executeWrite DB.QUORUM (DB.query updateFirstLastQuery)
+    (_marketName market, processDayZero, first', last')
+
+  -- Write all of the trades at the lowest consistency level
+  forM_ current $ \t -> do
+    let group     = mod (_transactionID t) tradeGroupSize
+        insertion = (_marketName market, group, _transactionID t, _time t, _price t, _amount t)
+    DB.executeWrite DB.ONE (DB.query tradeInsertQuery) insertion
+
+  -- Update ID of latest trade
+  _ <- DB.executeWrite DB.QUORUM (DB.query updateLastTradeQuery)
+    (_marketName market, last', _time lastTrade)
+
+  -- Process all remaining days
+  processTrades market (Trades future)
+
+  where
+  firstLastFetchQuery  = "select first from " <> DB.marketTradesDaySchema <> " where market=? and day=?"
+  updateFirstLastQuery = "insert into "       <> DB.marketTradesDaySchema <> " values (?, ?, ?, ?)"
+  updateLastTradeQuery = "insert into "       <> DB.marketLastTradeTable  <> " values (?, ?, ?)"
+  tradeInsertQuery     = "insert into "       <> DB.marketTradesTable     <> " values (?, ?, ?, ?, ?, ?)"
 
 -- | Separate thread which corresponds to a single market.
 --   Handles updated configurations and other external requests.

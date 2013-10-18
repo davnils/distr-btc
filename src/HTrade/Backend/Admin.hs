@@ -5,20 +5,27 @@ module Main where
 import Control.Monad (forM_)
 import Database.Cassandra.CQL
 import Data.Monoid ((<>))
+import Data.Text (Text)
 import System.Environment
 
 import HTrade.Backend.Storage
 
 createSchema, dropSchema :: Cas ()
 
+tables :: [(Text, Text)]
+tables =
+  [
+    (marketRawTable, marketRawDataSchema),
+    (marketOrderBookTable, marketOrderBookSchema),
+    (marketTradesTable, marketTradesSchema),
+    (marketLastTradeTable, marketLastTradeSchema),
+    (marketTradesDayTable, marketTradesDaySchema)
+  ]
+
 createSchema = forM_ tables $ \(table, schema) -> 
   executeSchema ALL (query $ "create table " <> table <> " " <> schema) ()
-  where
-  tables = [(marketRawTable, marketRawDataSchema), (marketOrderBookTable, marketOrderBookSchema)]
 
-dropSchema =  forM_ tables $ \table -> executeSchema ALL (query $ "drop table " <> table) ()
-  where
-  tables = [marketRawTable, marketOrderBookTable]
+dropSchema =  forM_ tables $ \(table, _) -> executeSchema ALL (query $ "drop table " <> table) ()
 
 runAction :: Cas a -> IO a
 runAction action = do
