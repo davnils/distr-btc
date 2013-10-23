@@ -20,12 +20,12 @@ module HTrade.Backend.Configuration (
   getLoadedMarkets
 ) where
 
-import Control.Applicative (Applicative, (<$>))
+import           Control.Applicative             (Applicative, (<$>))
 import qualified Control.Concurrent.Async.Lifted as C
-import Control.Error
-import Control.Monad
-import Control.Monad.Trans
-import Control.Monad.Trans.Control
+import qualified Control.Error                   as E
+import           Control.Monad                   (forM, forM_, guard, liftM, liftM2, liftM5, void)
+import           Control.Monad.Trans             (lift, liftIO, MonadIO, MonadTrans)
+import           Control.Monad.Trans.Control     (MonadBaseControl)
 import qualified Control.Monad.State             as S
 import qualified Data.Configurator               as CF
 import qualified Data.Map                        as M
@@ -33,9 +33,9 @@ import qualified Data.List                       as L
 import qualified Pipes.Concurrent                as P
 import qualified System.Directory                as D
 
-import HTrade.Backend.MarketFetch
+import           HTrade.Backend.MarketFetch
 import qualified HTrade.Backend.ProxyLayer       as PL
-import HTrade.Backend.Types
+import           HTrade.Backend.Types
 
 -- | Internal state used by configuration layer.
 --   Maintains a mapping between loaded markets and their corresponding
@@ -74,7 +74,7 @@ loadConfigurations
   :: (Functor m, MonadBaseControl IO m, MonadIO m)
   => FilePath
   -> MConfigT (PL.MProxyT m) (Maybe ([MarketIdentifier], [FilePath]))
-loadConfigurations dir = runMaybeT $ do
+loadConfigurations dir = E.runMaybeT $ do
   liftIO (D.doesDirectoryExist dir) >>= guard
   files <- filter (\file -> not $ L.isPrefixOf "." file) <$> liftIO (D.getDirectoryContents dir)
   let withDirPrefix = map (\file -> dir ++ "/" ++ file) files
@@ -135,9 +135,9 @@ loadConfigurations dir = runMaybeT $ do
 parseConfigurationFile
   :: FilePath
   -> IO (Maybe MarketConfiguration)
-parseConfigurationFile path = runMaybeT $ do
-  config <- hushT . syncIO $ CF.load [CF.Required path]
-  let get name = MaybeT $ CF.lookup config name
+parseConfigurationFile path = E.runMaybeT $ do
+  config <- E.hushT . E.syncIO $ CF.load [CF.Required path]
+  let get name = E.MaybeT $ CF.lookup config name
 
   marketId <- liftM2 MarketIdentifier
     (get "name")

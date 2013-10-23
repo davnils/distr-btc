@@ -9,21 +9,21 @@
 
 module Main where
 
-import Control.Applicative ((<$>), (<*>))
-import Control.Monad
-import Control.Monad.Trans
-import qualified Data.ByteString.Char8        as B
-import Data.Char (isAscii, isAlphaNum)
-import Data.Monoid ((<>))
-import qualified System.Directory             as D
-import System.IO (hClose, hPutStr)
-import System.IO.Temp (openTempFile)
-import qualified Test.QuickCheck              as Q
-import qualified Test.QuickCheck.Monadic      as Q
+import           Control.Applicative             ((<$>), (<*>))
+import           Control.Monad                   (guard, liftM2, when)
+import           Control.Monad.Trans             (lift, liftIO)
+import qualified Data.ByteString.Char8           as B
+import           Data.Char                       (isAscii, isAlphaNum)
+import           Data.Monoid                     ((<>))
+import qualified System.Directory                as D
+import           System.IO                       (hClose, hPutStr)
+import           System.IO.Temp                  (openTempFile)
+import qualified Test.QuickCheck                 as Q
+import qualified Test.QuickCheck.Monadic         as Q
 
-import qualified HTrade.Backend.Configuration as C
-import qualified HTrade.Backend.Types         as T
-import HTrade.Test.Utils
+import qualified HTrade.Backend.Configuration    as C
+import qualified HTrade.Backend.Types            as T
+import           HTrade.Test.Utils
 
 -- | Quickcheck instance for bytestrings, limited to alphanum ascii.
 instance Q.Arbitrary B.ByteString where

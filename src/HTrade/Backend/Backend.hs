@@ -8,17 +8,17 @@
 
 module Main where
 
-import Control.Applicative ((<$>))
-import Data.List (intercalate)
-import Data.Monoid ((<>))
-import Control.Monad (liftM)
-import Control.Monad.Trans
-import System.IO
+import           Control.Applicative             ((<$>))
+import           Data.List                       (intercalate)
+import           Data.Monoid                     ((<>))
+import           Control.Monad                   (liftM)
+import           Control.Monad.Trans             (lift, liftIO)
+import           System.IO                       (hFlush, stdout)
 
 import qualified HTrade.Backend.Configuration    as C
 import qualified HTrade.Backend.ProxyLayer       as PL
 import qualified HTrade.Backend.Types            as PL
-import HTrade.Shared.Utils (backendPort)
+import           HTrade.Shared.Utils             (backendPort)
 
 -- | Read, parse, and interpret a command from the given current directory.
 runShell cwd = liftIO (putStr "> " >> hFlush stdout >> getLine) >>= parse . words

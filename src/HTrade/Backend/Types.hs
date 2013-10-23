@@ -15,24 +15,24 @@
 
 module HTrade.Backend.Types where
 
-import Control.Applicative ((<*>), (<$>))
-import Control.Monad (guard, mzero)
-import qualified Data.Aeson                  as A
-import Data.Aeson ((.=), (.:))
-import Data.Attoparsec.Number (Number (..))
-import Data.Binary (Binary(..))
-import qualified Data.Binary                 as BIN
-import qualified Data.ByteString.Char8       as B
-import qualified Data.ByteString.Lazy.Char8  as BL
-import Data.Decimal (DecimalRaw(..), Decimal, realFracToDecimal)
-import Data.Time.Clock (NominalDiffTime, UTCTime)
-import Data.Time.Clock.POSIX (posixSecondsToUTCTime)
-import qualified Data.Vector                 as V
-import Data.Word (Word8)
-import Database.Cassandra.CQL
-import Network.Socket.Internal (SockAddr(..))
+import           Control.Applicative             ((<*>), (<$>))
+import           Control.Monad                   (guard, mzero)
+import qualified Data.Aeson                      as A
+import           Data.Aeson                      ((.=), (.:))
+import           Data.Attoparsec.Number          (Number (..))
+import           Data.Binary                     (Binary(..))
+import qualified Data.Binary                     as BIN
+import qualified Data.ByteString.Char8           as B
+import qualified Data.ByteString.Lazy.Char8      as BL
+import           Data.Decimal                    (DecimalRaw(..), Decimal, realFracToDecimal)
+import           Data.Time.Clock                 (NominalDiffTime, UTCTime)
+import           Data.Time.Clock.POSIX           (posixSecondsToUTCTime)
+import qualified Data.Vector                     as V
+import           Data.Word                       (Word8)
+import qualified Database.Cassandra.CQL          as DB
+import           Network.Socket.Internal         (SockAddr(..))
 
-import HTrade.Shared.Types
+import           HTrade.Shared.Types
 
 -- | Precision used when parsing JSON values (workaround with doubles).
 --   Keep track of https://github.com/bos/aeson/issues/146
@@ -71,10 +71,10 @@ type Bitcoin = Decimal
 newtype OrderBookEntry = OrderBookEntry (Decimal, Bitcoin)
    deriving (Binary, Eq, Ord, Show)
 
-instance CasType OrderBookEntry where
-  getCas = BIN.decode . BL.fromStrict . unBlob <$> getCas
-  putCas = putCas . Blob . BL.toStrict . BIN.encode
-  casType _ = CBlob
+instance DB.CasType OrderBookEntry where
+  getCas = BIN.decode . BL.fromStrict . DB.unBlob <$> DB.getCas
+  putCas = DB.putCas . DB.Blob . BL.toStrict . BIN.encode
+  casType _ = DB.CBlob
 
 -- | Order book retrieved from a market consisting of the current asks and bids.
 data MarketOrderBook

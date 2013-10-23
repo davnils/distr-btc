@@ -6,19 +6,19 @@
 
 module HTrade.Test.Utils where
 
-import Control.Applicative ((<$>))
-import Control.Concurrent (threadDelay)
-import qualified Control.Concurrent.Async    as C
-import Control.Monad
-import Control.Monad.Trans
-import Control.Monad.Trans.Maybe (runMaybeT)
-import qualified Data.Maybe                  as MB
-import Data.Word (Word16)
-import System.Exit (exitSuccess, exitFailure)
-import qualified Test.QuickCheck              as Q
+import           Control.Applicative             ((<$>))
+import           Control.Concurrent              (threadDelay)
+import qualified Control.Concurrent.Async        as C
+import           Control.Monad                   (forM, guard, when)
+import           Control.Monad.Trans             (lift, liftIO)
+import           Control.Monad.Trans.Maybe       (runMaybeT)
+import qualified Data.Maybe                      as MB
+import           Data.Word                       (Word16)
+import           System.Exit                     (exitSuccess, exitFailure)
+import qualified Test.QuickCheck                 as Q
 
-import qualified HTrade.Backend.ProxyLayer   as PL
-import qualified HTrade.Proxy.Proxy          as P
+import qualified HTrade.Backend.ProxyLayer       as PL
+import qualified HTrade.Proxy.Proxy              as P
 
 -- | Test port used to establish backend services during testing.
 testPort :: Word16

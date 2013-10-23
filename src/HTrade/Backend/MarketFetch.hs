@@ -21,29 +21,29 @@ module HTrade.Backend.MarketFetch where
 
 import qualified Control.Concurrent.Async.Lifted as C
 import qualified Control.Error                   as E
-import Control.Monad hiding (mapM_)
-import Control.Monad.Base
-import Control.Monad.Trans
-import Control.Monad.Trans.Control
+import           Control.Monad                   (forever, forM_, void)
+import           Control.Monad.Base              (liftBase, MonadBase)
+import           Control.Monad.Trans             (lift)
+import           Control.Monad.Trans.Control     (MonadBaseControl)
 import qualified Control.Monad.Trans.State       as S
 import qualified Data.Aeson                      as A
 import qualified Data.ByteString.Lazy.Char8      as BL
-import Data.Foldable (mapM_)
-import Data.Int (Int64)
-import Data.List (partition)
-import Data.Maybe (fromMaybe)
-import Data.Monoid ((<>))
-import Data.Time.Clock (getCurrentTime, UTCTime, utctDay, utctDayTime)
-import Data.UUID.V4 (nextRandom)
+import           Data.Foldable                   (mapM_)
+import           Data.Int                        (Int64)
+import           Data.List                       (partition)
+import           Data.Maybe                      (fromMaybe)
+import           Data.Monoid                     ((<>))
+import           Data.Time.Clock                 (getCurrentTime, UTCTime, utctDay, utctDayTime)
+import           Data.UUID.V4                    (nextRandom)
 import qualified Database.Cassandra.CQL          as DB
 import qualified Pipes.Concurrent                as P
-import Prelude hiding (mapM_)
+import           Prelude                         hiding (mapM_)
 
 import qualified HTrade.Backend.ProxyLayer       as PL
 import qualified HTrade.Backend.Storage          as DB
-import HTrade.Backend.Types
-import HTrade.Shared.Types
-import HTrade.Shared.Utils
+import           HTrade.Backend.Types
+import           HTrade.Shared.Types
+import           HTrade.Shared.Utils
 
 -- | Control message sent to a market channel by some external entity.
 data ControlMessage

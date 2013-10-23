@@ -9,11 +9,11 @@
 
 module HTrade.Shared.Types where
 
-import qualified Data.ByteString.Char8       as B
-import Data.Binary (Binary)
-import Data.Int (Int64)
-import Data.Word (Word)
-import GHC.Generics (Generic)
+import qualified Data.ByteString.Char8           as B
+import           Data.Binary                     (Binary)
+import           Data.Int                        (Int64)
+import           Data.Word                       (Word)
+import           GHC.Generics                    (Generic)
 
 -- | Current version of proxy software, major and minor versions.
 type ProxyVersion = (Int, Int)

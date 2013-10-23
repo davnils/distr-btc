@@ -7,13 +7,13 @@
 
 module Main where
 
-import Control.Monad
-import Control.Monad.Trans
-import qualified Data.Map                    as M
+import           Control.Monad                   (guard)
+import           Control.Monad.Trans             (lift, liftIO)
+import qualified Data.Map                        as M
 
-import qualified HTrade.Backend.ProxyLayer   as PL
-import qualified HTrade.Shared.Types         as T
-import HTrade.Test.Utils
+import qualified HTrade.Backend.ProxyLayer       as PL
+import qualified HTrade.Shared.Types             as T
+import           HTrade.Test.Utils
 
 -- | Establish a backend and k (~10^3) proxy nodes.
 --   Echo-reply from proxy nodes and verify the corresponding result.

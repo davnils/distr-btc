@@ -8,14 +8,14 @@
 
 module HTrade.Shared.Utils where
 
-import qualified Control.Concurrent.Async    as A
-import Control.Concurrent (threadDelay)
-import qualified Control.Exception           as E
-import Control.Monad.Base
-import Data.Word (Word, Word16)
-import Pipes
+import qualified Control.Concurrent.Async        as A
+import           Control.Concurrent              (threadDelay)
+import qualified Control.Exception               as E
+import           Control.Monad.Base              (liftBase, MonadBase)
+import           Data.Word                       (Word, Word16)
+import qualified Pipes                           as P
 
-import HTrade.Shared.Types
+import           HTrade.Shared.Types
 
 -- | Default port used by the backend service.
 backendPort :: Word16
@@ -25,11 +25,11 @@ backendPort = 1111
 --   propagating uwrapped Just values.
 terminateD
   :: Monad m
-  => Pipe (Maybe a) a m ()
+  => P.Pipe (Maybe a) a m ()
 terminateD = do
-  val <- await
+  val <- P.await
   case val of
-    Just a -> yield a >> terminateD
+    Just a -> P.yield a >> terminateD
     Nothing -> return ()
 
 -- | Apply a function if the supplied value isn't 'Data.Maybe.Nothing'.

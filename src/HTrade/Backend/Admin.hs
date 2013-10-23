@@ -14,13 +14,13 @@
 
 module Main where
 
-import Control.Monad (forM_)
-import Database.Cassandra.CQL
-import Data.Monoid ((<>))
-import Data.Text (Text)
-import System.Environment
+import           Control.Monad                   (forM_)
+import qualified Database.Cassandra.CQL          as DB
+import           Data.Monoid                     ((<>))
+import           Data.Text                       (Text)
+import           System.Environment              (getArgs)
 
-import HTrade.Backend.Storage
+import           HTrade.Backend.Storage
 
 -- | All tables adminstrated by this tool.
 --   Pairs of table name and the associated schema.
@@ -37,19 +37,19 @@ tables =
   ]
 
 -- | Create all schemas, will fail if any already exist.
-createSchema :: Cas ()
+createSchema :: DB.Cas ()
 createSchema = forM_ tables $ \(table, schema) -> 
-  executeSchema ALL (query $ "create table " <> table <> " " <> schema) ()
+  DB.executeSchema DB.ALL (DB.query $ "create table " <> table <> " " <> schema) ()
 
 -- | Drop all schemas, will fail if any do not exist.
-dropSchema :: Cas ()
-dropSchema =  forM_ tables $ \(table, _) -> executeSchema ALL (query $ "drop table " <> table) ()
+dropSchema :: DB.Cas ()
+dropSchema =  forM_ tables $ \(table, _) -> DB.executeSchema DB.ALL (DB.query $ "drop table " <> table) ()
 
 -- | Evaluate some Cassandra action over the default pool.
-runAction :: Cas a -> IO a
+runAction :: DB.Cas a -> IO a
 runAction action = do
-  pool <- newPool [(cassandraHost, cassandraPort)] marketKeyspace
-  runCas pool action
+  pool <- DB.newPool [(cassandraHost, cassandraPort)] marketKeyspace
+  DB.runCas pool action
 
 -- | Expects a single argument and will either initialize or destroy all C* tables.
 main :: IO ()

@@ -12,29 +12,29 @@
 
 module HTrade.Proxy.Proxy where
 
-import Control.Applicative ((<$>))
-import qualified Control.Exception           as E
-import qualified Control.Error               as E
-import Control.Monad.State
-import qualified Data.ByteString.Char8       as B
-import Data.List (intersperse)
-import Data.Monoid ((<>))
-import qualified Data.Monoid.Statistics      as MS
-import qualified Data.Monoid.Statistics.Numeric as MSN
-import qualified Data.Set                    as S
-import qualified Data.Time                   as T
-import Data.Word (Word16)
-import qualified Network.Http.Client         as H
-import Network.Socket (HostName, Socket)
-import Pipes ((>->))
-import qualified Pipes                       as P
-import qualified Pipes.Prelude               as P
-import qualified Pipes.Binary                as P
-import qualified Pipes.Network.TCP           as P
-import System.Timeout (timeout)
+import           Control.Applicative             ((<$>))
+import qualified Control.Exception               as E
+import           Control.Monad                   (forever, join, void)
+import           Control.Monad.State             (get, lift, modify, runStateT, StateT)
+import qualified Data.ByteString.Char8           as B
+import           Data.List                       (intersperse)
+import           Data.Monoid                     ((<>))
+import qualified Data.Monoid.Statistics          as MS
+import qualified Data.Monoid.Statistics.Numeric  as MSN
+import qualified Data.Set                        as S
+import qualified Data.Time                       as T
+import           Data.Word                       (Word16)
+import qualified Network.Http.Client             as H
+import           Network.Socket                  (HostName, Socket)
+import           Pipes                           ((>->))
+import qualified Pipes                           as P
+import qualified Pipes.Prelude                   as P
+import qualified Pipes.Binary                    as P
+import qualified Pipes.Network.TCP               as P
+import           System.Timeout                  (timeout)
 
-import HTrade.Shared.Types
-import HTrade.Shared.Utils
+import           HTrade.Shared.Types
+import           HTrade.Shared.Utils
 
 -- | State maintainted between evaluated queries.
 type ProxyStatistics = S.Set Double

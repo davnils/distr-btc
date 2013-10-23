@@ -27,31 +27,31 @@ module HTrade.Backend.ProxyLayer (
   sampleNode
 ) where
 
-import Data.Monoid ((<>))
-import Control.Applicative
-import qualified Control.Concurrent.Async    as C
-import Control.Concurrent (threadDelay)
-import Control.Concurrent.STM
-import Control.Monad
-import Control.Monad.Base
-import Control.Monad.Trans
-import Control.Monad.Trans.Control
-import qualified Control.Monad.Reader        as R
-import qualified Data.Map                    as M
-import Data.Maybe (fromMaybe)
-import Data.Word (Word16)
-import Pipes ((>->))
-import qualified Pipes                       as P
-import qualified Pipes.Binary                as P
-import qualified Pipes.Concurrent            as P
-import qualified Pipes.Prelude               as P
-import qualified Pipes.Network.TCP           as P hiding (recv, send)
-import System.Random (randomRIO)
-import System.Timeout (timeout)
+import           Data.Monoid                     ((<>))
+import           Control.Applicative             ((<$>), Applicative)
+import qualified Control.Concurrent.Async        as C
+import           Control.Concurrent              (threadDelay)
+import qualified Control.Concurrent.STM          as STM
+import           Control.Monad                   (forever, join, liftM, void)
+import           Control.Monad.Base              (liftBase, liftBaseDefault, MonadBase)
+import           Control.Monad.Trans             (liftIO, MonadIO, MonadTrans)
+import qualified Control.Monad.Trans.Control     as TC
+import qualified Control.Monad.Reader            as R
+import qualified Data.Map                        as M
+import           Data.Maybe                      (fromMaybe)
+import           Data.Word                       (Word16)
+import           Pipes                           ((>->))
+import qualified Pipes                           as P
+import qualified Pipes.Binary                    as P
+import qualified Pipes.Concurrent                as P
+import qualified Pipes.Prelude                   as P
+import qualified Pipes.Network.TCP               as P hiding (recv, send)
+import           System.Random                   (randomRIO)
+import           System.Timeout                  (timeout)
 
-import HTrade.Backend.Types
-import HTrade.Shared.Types
-import HTrade.Shared.Utils
+import           HTrade.Backend.Types
+import           HTrade.Shared.Types
+import           HTrade.Shared.Utils
 
 -- | Type of a worker thread stored in the globally shared thread map.
 type WorkerThread = P.Output (Maybe (ProxyRequest, WorkerThreadQueryState))
@@ -60,7 +60,7 @@ type WorkerThread = P.Output (Maybe (ProxyRequest, WorkerThreadQueryState))
 type WorkerThreadQueryState = P.Output (Maybe ProxyResponse)
 
 -- | Internal state used in monad transformer, stored a globally shared map.
-type InternalState = TVar (M.Map WorkerIdentifier WorkerThread)
+type InternalState = STM.TVar (M.Map WorkerIdentifier WorkerThread)
 
 -- | Monad transformer giving access to the proxy layer.
 newtype MProxyT m a
@@ -82,16 +82,16 @@ instance MonadBase m m' => MonadBase m (MProxyT m') where
   liftBase = liftBaseDefault
 
 -- | MonadTransControl instance required to integrate with the lifted async package.
-instance MonadTransControl MProxyT where
-  newtype StT MProxyT a = StProxy {unProxy :: StT (R.ReaderT InternalState) a}
-  liftWith = defaultLiftWith MProxyT runProxyMT StProxy
-  restoreT = defaultRestoreT MProxyT unProxy
+instance TC.MonadTransControl MProxyT where
+  newtype StT MProxyT a = StProxy {unProxy :: TC.StT (R.ReaderT InternalState) a}
+  liftWith = TC.defaultLiftWith MProxyT runProxyMT StProxy
+  restoreT = TC.defaultRestoreT MProxyT unProxy
 
 -- | MonadBaseControl instance required to integrate with the lifted async package.
-instance MonadBaseControl b m => MonadBaseControl b (MProxyT m) where
-  newtype StM (MProxyT m) a = StMT {unStMT :: ComposeSt MProxyT m a}
-  liftBaseWith = defaultLiftBaseWith StMT
-  restoreM     = defaultRestoreM   unStMT
+instance TC.MonadBaseControl b m => TC.MonadBaseControl b (MProxyT m) where
+  newtype StM (MProxyT m) a = StMT {unStMT :: TC.ComposeSt MProxyT m a}
+  liftBaseWith = TC.defaultLiftBaseWith StMT
+  restoreM     = TC.defaultRestoreM   unStMT
 
 -- | Minimum number of nodes required before allowing any proxy layer queries.
 readyLimit :: Int
@@ -128,7 +128,7 @@ withLayer
   -> MProxyT m a
   -> m a
 withLayer port routine = do
-  threadState <- liftBase $ newTVarIO M.empty
+  threadState <- liftBase $ STM.newTVarIO M.empty
   listenID <- liftBase . C.async $ listener threadState
 
   liftBase . threadDelay $ fromIntegral listenDelay
@@ -147,8 +147,8 @@ withLayer port routine = do
       let threadID = addr
       (outputTransmit, inputTransmit) <- P.spawn P.Single
       (outputReceive, inputReceive) <- P.spawn P.Single
-      atomically $
-        modifyTVar' threadState $ M.insert threadID (outputTransmit <> outputReceive)
+      STM.atomically $
+        STM.modifyTVar' threadState $ M.insert threadID (outputTransmit <> outputReceive)
 
       -- launch a pipeline to transmit outgoing packets
       threadTransmit <- C.async . tryAny . P.runEffect $ 
@@ -168,8 +168,8 @@ withLayer port routine = do
       _ <- C.waitAnyCatchCancel [void threadTransmit, void threadReceive]
 
       -- cleanup thread pool upon termination
-      atomically $
-        modifyTVar' threadState $ M.delete threadID
+      STM.atomically $
+        STM.modifyTVar' threadState $ M.delete threadID
       P.performGC
 
 -- | Save the response to a mailbox read from the provided mailbox.
@@ -179,11 +179,11 @@ saveResponse
   -> P.Consumer ProxyResponse m b
 saveResponse input = forever $ do
   reply <- P.await
-  output <- liftM join . liftIO . atomically . P.recv $ input
+  output <- liftM join . liftIO . STM.atomically . P.recv $ input
   case output of
     Nothing -> return ()
     Just (_, output') -> do
-      void . liftIO . atomically $ check <$> P.send output' (Just reply)
+      void . liftIO . STM.atomically $ STM.check <$> P.send output' (Just reply)
 
 -- | Execute a query on the proxy layer.
 --   If no proxy node is given then a random sample is taken from the pool.
@@ -213,11 +213,11 @@ query addr' timeout' req = do
 
   -- run a query on the given address, may fail with Nothing
   runQuery addr = do
-    thread <- R.ask >>= liftBase . atomically . liftM (M.lookup addr) . readTVar
+    thread <- R.ask >>= liftBase . STM.atomically . liftM (M.lookup addr) . STM.readTVar
     (localInput, localOutput) <- liftBase $ P.spawn P.Single
     onJust thread $ \remote -> liftBase $ do
-      void . atomically $ check <$> P.send remote (Just (req, localInput))
-      atomically . liftM join $ P.recv localOutput
+      void . STM.atomically $ STM.check <$> P.send remote (Just (req, localInput))
+      STM.atomically . liftM join $ P.recv localOutput
 
 -- | Check if the number of connected proxy nodes have reached the critical limit.
 --   It is suitable to call this function repeatedely until success during
@@ -231,18 +231,18 @@ ready = fmap (>= readyLimit) connectedNodes
 connectedNodes
   :: MonadBase IO m
   => MProxyT m Int
-connectedNodes = R.ask >>= fmap M.size . liftBase . readTVarIO
+connectedNodes = R.ask >>= fmap M.size . liftBase . STM.readTVarIO
 
 -- | Remove the specified node from the proxy layer.
 removeNode
   :: MonadBase IO m
   => WorkerIdentifier
   -> MProxyT m ()
-removeNode addr = R.ask >>= \threadState -> liftBase . atomically $ do
-  entry <- M.lookup addr <$> readTVar threadState
-  modifyTVar' threadState $ M.delete addr
+removeNode addr = R.ask >>= \threadState -> liftBase . STM.atomically $ do
+  entry <- M.lookup addr <$> STM.readTVar threadState
+  STM.modifyTVar' threadState $ M.delete addr
   case entry of
-    Just chan -> always $ P.send chan Nothing
+    Just chan -> STM.always $ P.send chan Nothing
     Nothing -> return ()
 
 -- | Maps a function over the set of connected proxies.
@@ -254,7 +254,7 @@ mapLayer
   => (WorkerIdentifier -> MProxyT m a)
   -> MProxyT m (M.Map WorkerIdentifier a)
 mapLayer f = do
-  threadMap <- R.ask >>= liftBase . atomically . readTVar
+  threadMap <- R.ask >>= liftBase . STM.atomically . STM.readTVar
   let addrs = M.keys threadMap
   mapped <- mapM f addrs
   return . M.fromList $ zip addrs mapped
@@ -263,7 +263,7 @@ mapLayer f = do
 sampleNode
   :: MonadBase IO m
   => MProxyT m (Maybe WorkerIdentifier)
-sampleNode = R.ask >>= liftBase . atomically . readTVar >>= \workers -> do
+sampleNode = R.ask >>= liftBase . STM.atomically . STM.readTVar >>= \workers -> do
   let workerSize = M.size workers
   case workerSize of
     0 -> return Nothing

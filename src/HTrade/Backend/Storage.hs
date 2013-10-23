@@ -9,10 +9,10 @@
 
 module HTrade.Backend.Storage where
 
-import Database.Cassandra.CQL
-import Data.Text (Text)
-import Network (HostName)
-import Network.Socket (ServiceName)
+import qualified Database.Cassandra.CQL          as DB
+import           Data.Text                       (Text)
+import           Network                         (HostName)
+import           Network.Socket                  (ServiceName)
 
 -- | Cassandra host to be used.
 cassandraHost :: HostName
@@ -23,7 +23,7 @@ cassandraPort :: ServiceName
 cassandraPort = "9042"
 
 -- | Cassandra keyspace to be used.
-marketKeyspace :: Keyspace
+marketKeyspace :: DB.Keyspace
 marketKeyspace = "market_data"
 
 -- | Name of table storing raw content retrieved from market web servers.
