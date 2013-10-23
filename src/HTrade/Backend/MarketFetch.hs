@@ -19,6 +19,7 @@
 
 module HTrade.Backend.MarketFetch where
 
+import           Control.Applicative             ((<$>))
 import qualified Control.Concurrent.Async.Lifted as C
 import qualified Control.Error                   as E
 import           Control.Monad                   (forever, forM_, void)
@@ -33,7 +34,7 @@ import           Data.Int                        (Int64)
 import           Data.List                       (partition)
 import           Data.Maybe                      (fromMaybe)
 import           Data.Monoid                     ((<>))
-import           Data.Time.Clock                 (getCurrentTime, UTCTime, utctDay, utctDayTime)
+import           Data.Time.Clock                 (diffUTCTime, getCurrentTime, UTCTime, utctDay, utctDayTime)
 import           Data.UUID.V4                    (nextRandom)
 import qualified Database.Cassandra.CQL          as DB
 import qualified Pipes.Concurrent                as P
@@ -80,10 +81,16 @@ worker
 worker conf pool = forever $ do
   lastTrade <- fmap defaultZero . liftBase . DB.runCas pool $
     DB.executeRow DB.QUORUM lastTradeQuery market
+
+  preFetchTime <- liftBase getCurrentTime
   res <- PL.query Nothing (Just defaultMarketTimeout) (marketReq lastTrade)
   case res of
     Nothing -> delay $ seconds 1
-    Just reply -> parseReply reply >> delay (_marketInterval conf)
+    Just reply -> do
+      parseReply reply
+      timeDiff <- (`diffUTCTime` preFetchTime) <$> liftBase getCurrentTime
+      let sleep = max (fromIntegral (_marketInterval conf) - (timeDiff * 10^^6)) 0.0
+      delay $ round sleep
 
   where
   marketReq = MarketRequest
