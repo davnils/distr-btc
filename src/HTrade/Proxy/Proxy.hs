@@ -12,7 +12,6 @@
 
 module HTrade.Proxy.Proxy where
 
-import           Control.Applicative             ((<$>))
 import qualified Control.Exception               as E
 import           Control.Monad                   (forever, join, void)
 import           Control.Monad.State             (get, lift, modify, runStateT, StateT)
@@ -23,6 +22,7 @@ import qualified Data.Monoid.Statistics          as MS
 import qualified Data.Monoid.Statistics.Numeric  as MSN
 import qualified Data.Set                        as S
 import qualified Data.Time                       as T
+import qualified Data.Time.Clock.POSIX           as T
 import           Data.Word                       (Word16)
 import qualified Network.Http.Client             as H
 import           Network.Socket                  (HostName, Socket)
@@ -139,10 +139,12 @@ getMarket site tradePath orderPath allowance = do
   blockExceptions . checkTimeout . withConn $ \conn -> do
     trades <- retrieve conn tradePath
     orders <- retrieve conn orderPath
-    totalTime <- (`T.diffUTCTime` preConnectTime) <$> T.getCurrentTime
+    postFetchTime <- T.getCurrentTime
+    let totalTime = postFetchTime `T.diffUTCTime` preConnectTime
 
     return . Just $ MarketReplyDetails
       (round $ realToFrac timerPrecision * totalTime)
+      (fromInteger . fst . properFraction $ T.utcTimeToPOSIXSeconds postFetchTime)
       trades
       orders
   where

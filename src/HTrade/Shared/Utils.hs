@@ -12,7 +12,7 @@ import qualified Control.Concurrent.Async        as A
 import           Control.Concurrent              (threadDelay)
 import qualified Control.Exception               as E
 import           Control.Monad.Base              (liftBase, MonadBase)
-import           Data.Word                       (Word, Word16)
+import           Data.Word                       (Word16, Word64)
 import qualified Pipes                           as P
 
 import           HTrade.Shared.Types
@@ -56,7 +56,7 @@ blockExceptions = fmap filterExp . tryAny
 
 -- | Convert seconds to microseconds.
 seconds
-  :: Word
+  :: Word64
   -> MicroSeconds
 seconds = (* 10^(6 :: Int))
 

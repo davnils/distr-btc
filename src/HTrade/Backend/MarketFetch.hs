@@ -34,7 +34,8 @@ import           Data.Int                        (Int64)
 import           Data.List                       (partition)
 import           Data.Maybe                      (fromMaybe)
 import           Data.Monoid                     ((<>))
-import           Data.Time.Clock                 (diffUTCTime, getCurrentTime, UTCTime, utctDay, utctDayTime)
+import           Data.Time.Clock                 as T
+import           Data.Time.Clock.POSIX           as T
 import           Data.UUID.V4                    (nextRandom)
 import qualified Database.Cassandra.CQL          as DB
 import qualified Pipes.Concurrent                as P
@@ -88,7 +89,7 @@ worker conf pool = forever $ do
     Nothing -> delay $ seconds 1
     Just reply -> do
       parseReply reply
-      timeDiff <- (`diffUTCTime` preFetchTime) <$> liftBase getCurrentTime
+      timeDiff <- (`T.diffUTCTime` preFetchTime) <$> liftBase getCurrentTime
       let sleep = max (fromIntegral (_marketInterval conf) - (timeDiff * 10^^6)) 0.0
       delay $ round sleep
 
@@ -112,14 +113,14 @@ writeMarketStatus
   :: DB.MonadCassandra m
   => MarketIdentifier
   -> MarketStatus
-  -> UTCTime
+  -> T.UTCTime
   -> m ()
 writeMarketStatus market status now =
   DB.executeWrite DB.ONE (DB.query statusQuery) statusInsert
   where
   statusInsert = (
     _marketName market,
-    now { utctDayTime = 0 },
+    now { T.utctDayTime = 0 },
     now,
     status
     )
@@ -146,7 +147,7 @@ handleReply
   -> PL.MProxyT m ()
 handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ do
   uuid <- lift nextRandom
-  now <- lift getCurrentTime
+  let now = T.posixSecondsToUTCTime . fromIntegral $ _responseTimestamp reply
 
   -- Parse order book and trades from the provided JSON format.
   parsedOrders <- decodeItem "Failed to parse orderbook" $ _orderBook reply
@@ -163,7 +164,7 @@ handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ d
 
       orderInsert = (
         _marketName $ _marketIdentifier market,
-        now { utctDayTime = 0 },
+        now { T.utctDayTime = 0 },
         now,
         _asks parsedOrders,
         _bids parsedOrders
@@ -203,9 +204,9 @@ processTrades
 processTrades _ (Trades []) = return ()
 processTrades market (Trades trades) = do
   -- Extract and partition w.r.t day of first trade
-  let getDay = utctDay . _time
+  let getDay = T.utctDay . _time
       processDay = getDay $ head trades
-      processDayZero = (_time $ head trades) { utctDayTime = 0 }
+      processDayZero = (_time $ head trades) { T.utctDayTime = 0 }
       (current, future) = partition (\t -> getDay t == processDay) trades
       lastTrade = last trades
 

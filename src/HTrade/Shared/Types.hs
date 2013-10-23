@@ -12,7 +12,7 @@ module HTrade.Shared.Types where
 import qualified Data.ByteString.Char8           as B
 import           Data.Binary                     (Binary)
 import           Data.Int                        (Int64)
-import           Data.Word                       (Word)
+import           Data.Word                       (Word64)
 import           GHC.Generics                    (Generic)
 
 -- | Current version of proxy software, major and minor versions.
@@ -83,6 +83,7 @@ data MarketReplyDetails
  = MarketReplyDetails
    {
      _responseTime            :: MicroSeconds,            -- ^ Elapsed time until complete response was retrieved.
+     _responseTimestamp       :: Word64,                  -- ^ POSIX timestamp (second resolution) taken after all data was received.
      _trades                  :: TradesSerialized,        -- ^ Serialized (possibly empty) list of trades.
      _orderBook               :: OrderBookSerialized      -- ^ Serialized (possibly empty) order book.
    }
@@ -91,7 +92,7 @@ data MarketReplyDetails
 instance Binary MarketReplyDetails
 
 -- | Microseconds alias used for clarity.
-type MicroSeconds = Word
+type MicroSeconds = Word64
 
 -- | Response time in microseconds when polling a market.
 type ResponseTime = Int
