@@ -7,6 +7,15 @@
   TypeFamilies,
   UndecidableInstances #-}
 
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Backend.ProxyLayer
+--
+-- Module providing interaction with connected proxy nodes.
+-- Starts listening for external connections upon initialization.
+-- The proxy layer can then be queried and monitored through
+-- high-level functions which operate over the 'MProxyT' monad.
+
 module HTrade.Backend.ProxyLayer (
   MProxyT,
   withLayer,
@@ -50,14 +59,14 @@ type WorkerThread = P.Output (Maybe (ProxyRequest, WorkerThreadQueryState))
 -- | Type of state used in pipeline.
 type WorkerThreadQueryState = P.Output (Maybe ProxyResponse)
 
--- | Internal state used in monad transformer, stores a globally shared map.
+-- | Internal state used in monad transformer, stored a globally shared map.
 type InternalState = TVar (M.Map WorkerIdentifier WorkerThread)
 
 -- | Monad transformer giving access to the proxy layer.
 newtype MProxyT m a
  = MProxyT
  {
-   runProxyMT :: R.ReaderT InternalState m a
+   runProxyMT :: R.ReaderT InternalState m a -- ^ State carrying access to all proxies.
  }
  deriving (
    Applicative,
@@ -68,14 +77,17 @@ newtype MProxyT m a
    R.MonadReader InternalState
  )
 
+-- | MonadBase instance required to lift IO actions.
 instance MonadBase m m' => MonadBase m (MProxyT m') where
   liftBase = liftBaseDefault
 
+-- | MonadTransControl instance required to integrate with the lifted async package.
 instance MonadTransControl MProxyT where
   newtype StT MProxyT a = StProxy {unProxy :: StT (R.ReaderT InternalState) a}
   liftWith = defaultLiftWith MProxyT runProxyMT StProxy
   restoreT = defaultRestoreT MProxyT unProxy
 
+-- | MonadBaseControl instance required to integrate with the lifted async package.
 instance MonadBaseControl b m => MonadBaseControl b (MProxyT m) where
   newtype StM (MProxyT m) a = StMT {unStMT :: ComposeSt MProxyT m a}
   liftBaseWith = defaultLiftBaseWith StMT
@@ -104,7 +116,7 @@ maxProbes :: Int
 maxProbes = 10
 
 -- | Main entry point when interfacing with the proxy layer.
---   Accepts an computation to be evaluated over the proxy transformer.
+--   Accepts a computation to be evaluated over the proxy transformer.
 --   Initially a thread pool is created and incoming connections are
 --   accepted from the proxy layer. Each node is associated with a pipeline
 --   which transfers data between queries and the proxy node.
@@ -132,13 +144,13 @@ withLayer port routine = do
     -- start accepting connections
     P.serve P.HostAny (show port) $ \(socket, addr) -> do
       -- serve each proxy node in a separate thread
-
       let threadID = addr
       (outputTransmit, inputTransmit) <- P.spawn P.Single
       (outputReceive, inputReceive) <- P.spawn P.Single
       atomically $
         modifyTVar' threadState $ M.insert threadID (outputTransmit <> outputReceive)
 
+      -- launch a pipeline to transmit outgoing packets
       threadTransmit <- C.async . tryAny . P.runEffect $ 
             P.fromInput inputTransmit
         >-> terminateD
@@ -146,11 +158,13 @@ withLayer port routine = do
         >-> P.for P.cat P.encode
         >-> P.toSocket socket
 
+      -- launch a pipeline to receive replies
       threadReceive <- C.async . tryAny . P.runEffect $ 
             P.decodeMany (P.fromSocket socket 4096)
         >-> P.map snd
         >-> saveResponse inputReceive
 
+      -- terminate after either pipeline dies
       _ <- C.waitAnyCatchCancel [void threadTransmit, void threadReceive]
 
       -- cleanup thread pool upon termination
@@ -158,6 +172,7 @@ withLayer port routine = do
         modifyTVar' threadState $ M.delete threadID
       P.performGC
 
+-- | Save the response to a mailbox read from the provided mailbox.
 saveResponse
   :: MonadIO m
   => P.Input (Maybe (ProxyRequest, WorkerThreadQueryState))

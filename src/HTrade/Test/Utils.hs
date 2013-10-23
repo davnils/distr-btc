@@ -1,3 +1,9 @@
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Test.Utils
+--
+-- Common functionality and settings used in test cases.
+
 module HTrade.Test.Utils where
 
 import Control.Applicative ((<$>))

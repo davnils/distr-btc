@@ -7,6 +7,12 @@
 
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Backend.Types
+--
+-- Various types and constants shared within the backend components.
+
 module HTrade.Backend.Types where
 
 import Control.Applicative ((<*>), (<$>))
@@ -33,30 +39,35 @@ import HTrade.Shared.Types
 decimalPrecision :: Word8
 decimalPrecision = 10
 
+-- | Unique identifier for each market.
 data MarketIdentifier
   = MarketIdentifier
     {
-      _marketName             :: B.ByteString,
-      _currency               :: B.ByteString
+      _marketName             :: B.ByteString,     -- ^ Name of market without spaces.
+      _currency               :: B.ByteString      -- ^ Currency, all caps, no delimiters.
     }
   deriving (Eq, Ord, Show)
 
+-- | Configuration associated with a market, loaded from disk.
 data MarketConfiguration
   = MarketConfiguration
     {
-      _marketIdentifier       :: MarketIdentifier,
-      _marketHost             :: B.ByteString,
-      _marketPath             :: B.ByteString,
-      _marketTrades           :: B.ByteString,
-      _marketOrders           :: B.ByteString,
-      _marketInterval         :: MicroSeconds
+      _marketIdentifier       :: MarketIdentifier, -- ^ Identifier indicating the market.
+      _marketHost             :: B.ByteString,     -- ^ Host prefixed with \”http(s)://\”.
+      _marketPath             :: B.ByteString,     -- ^ Market path shared by trades and order book.
+      _marketTrades           :: B.ByteString,     -- ^ Path to trades subpath.
+      _marketOrders           :: B.ByteString,     -- ^ Path to order book subpath.
+      _marketInterval         :: MicroSeconds      -- ^ Interval at which to poll the market.
     }
   deriving (Eq, Ord, Show)
 
+-- | Unique identifier of a worker.
 type WorkerIdentifier = SockAddr
 
+-- | Bitcoin alias used for convenience.
 type Bitcoin = Decimal
 
+-- | A single entry in the order book consisting of price and an amount.
 newtype OrderBookEntry = OrderBookEntry (Decimal, Bitcoin)
    deriving (Binary, Eq, Ord, Show)
 
@@ -65,6 +76,7 @@ instance CasType OrderBookEntry where
   putCas = putCas . Blob . BL.toStrict . BIN.encode
   casType _ = CBlob
 
+-- | Order book retrieved from a market consisting of the current asks and bids.
 data MarketOrderBook
  = MarketOrderBook
    {
@@ -73,6 +85,8 @@ data MarketOrderBook
    }
    deriving (Eq, Ord, Show)
 
+-- | Single trade entry consisting of timestamp, price, amount
+--   and a monotonically increasing unique integer ID.
 data TradeEntry
  = TradeEntry
    {
@@ -83,6 +97,7 @@ data TradeEntry
    }
    deriving (Eq, Ord, Show)
 
+-- | Trades retrieved from a market.
 newtype Trades = Trades [TradeEntry]
    deriving (Eq, Ord, Show)
 
@@ -137,10 +152,15 @@ instance Binary (DecimalRaw Integer) where
 
   get = Decimal <$> get <*> get
 
+-- | Status of a market, indicates if it can be reached or not.
 type MarketStatus = Int
 
+-- TODO: Create separate ADT
+
+-- | Indicates that the market was available when last probed.
 marketActive :: MarketStatus
 marketActive = 1
 
+-- | Indicates that the market was unavailable when last probed.
 marketInactive :: MarketStatus
 marketInactive = 0

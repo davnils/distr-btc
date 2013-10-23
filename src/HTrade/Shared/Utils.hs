@@ -1,5 +1,11 @@
 {-# Language FlexibleContexts #-}
 
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Shared.Utils
+--
+-- Various utility functions shared between the projects.
+
 module HTrade.Shared.Utils where
 
 import qualified Control.Concurrent.Async    as A
@@ -11,10 +17,12 @@ import Pipes
 
 import HTrade.Shared.Types
 
+-- | Default port used by the backend service.
 backendPort :: Word16
 backendPort = 1111
 
--- | Terminate the pipeline upon receiving 'Data.Maybe.Nothing'.
+-- | Pipline component terminating upon receiving 'Data.Maybe.Nothing',
+--   propagating uwrapped Just values.
 terminateD
   :: Monad m
   => Pipe (Maybe a) a m ()

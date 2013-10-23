@@ -2,6 +2,14 @@
   NoMonomorphismRestriction,
   OverloadedStrings #-}
 
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Proxy.Proxy
+--
+-- Repeatedly connectes to the backend service.
+-- Accepts incoming requests, evaluates the request, and transmits
+-- a response to the backend layer within some specified timeout.
+
 module HTrade.Proxy.Proxy where
 
 import Control.Applicative ((<$>))
@@ -28,18 +36,25 @@ import System.Timeout (timeout)
 import HTrade.Shared.Types
 import HTrade.Shared.Utils
 
+-- | State maintainted between evaluated queries.
 type ProxyStatistics = S.Set Double
+
+-- | Initial empty state configuration.
 defaultStats :: ProxyStatistics
 defaultStats = S.empty
 
+-- | Monad used by the worker thread.
 type MWorker = StateT ProxyStatistics IO
 
+-- | Version of the proxy software running.
 proxyVersion :: ProxyVersion
 proxyVersion  = (0, 1)
 
+-- | Precision of timer measurements.
 timerPrecision :: Int
 timerPrecision = 10^(6 :: Int)
 
+-- | GET parameter identifying the latest retrieved trade.
 tradeIDParam :: B.ByteString
 tradeIDParam = "since"
 

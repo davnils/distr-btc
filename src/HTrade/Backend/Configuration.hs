@@ -3,6 +3,14 @@
   GeneralizedNewtypeDeriving,
   OverloadedStrings #-}
 
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Backend.Configuration
+--
+-- Module handling market configurations, including parsing the actual files
+-- and managing the currently loaded markets.
+-- Supports reloading, adding, and removing configurations during runtime.
+
 module HTrade.Backend.Configuration (
   MConfigT, 
   withConfiguration,

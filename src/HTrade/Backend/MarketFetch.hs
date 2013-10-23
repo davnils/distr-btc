@@ -4,6 +4,19 @@
   OverloadedStrings
   #-}
 
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Backend.MarketFetch
+--
+-- Provides market fetching routines operatoring over market configurations.
+-- Executes a separate thread for each loaded market, which can be configured
+-- by sending messages over a market-specific channel.
+-- The supported channel operations include loading a configuration and
+-- shutting down the thread.
+--
+-- Each thread basically polls the market at the specified interval and
+-- outputs the results into a set of C* tables.
+
 module HTrade.Backend.MarketFetch where
 
 import qualified Control.Concurrent.Async.Lifted as C
@@ -34,16 +47,16 @@ import HTrade.Shared.Utils
 
 -- | Control message sent to a market channel by some external entity.
 data ControlMessage
-  = LoadConfiguration MarketConfiguration
-  | Shutdown
+  = LoadConfiguration MarketConfiguration         -- ^ Load a market configuration.
+  | Shutdown                                      -- ^ Shutdown the market thread.
 
 -- | Internal state used by market workers in order to keep track of
 --   the thread and configuration, if yet loaded.
 data MarketState m
   = MarketState
     {
-      _cancelWorker :: Maybe (PL.MProxyT m ()),
-      _configuration :: Maybe MarketConfiguration
+      _cancelWorker :: Maybe (PL.MProxyT m ()),   -- ^ Cancel thread action.
+      _configuration :: Maybe MarketConfiguration -- ^ Loaded market configuration.
     }
 
 -- | Default market timeout used to define when a market is unreachable. 
@@ -170,6 +183,11 @@ handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ d
   checkError (Left err) = print err
   checkError _ = return ()
 
+-- | Process all retrieved trades.
+--   Will not write to C* if there is no new data available.
+--   Besides writing all trades it also updates (first, last)
+--   transaction identifiers for the affected days, and the latest
+--   retrieved trade.
 processTrades
   :: DB.MonadCassandra m
   => MarketIdentifier

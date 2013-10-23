@@ -1,3 +1,11 @@
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Backend.Backend
+--
+-- Main entry point for the backend service.
+-- The backend service loads a set of configurations (initially from a default directory)
+-- and continues to accept commands from the stdin.
+
 module Main where
 
 import Control.Applicative ((<$>))
@@ -12,6 +20,7 @@ import qualified HTrade.Backend.ProxyLayer       as PL
 import qualified HTrade.Backend.Types            as PL
 import HTrade.Shared.Utils (backendPort)
 
+-- | Read, parse, and interpret a command from the given current directory.
 runShell cwd = liftIO (putStr "> " >> hFlush stdout >> getLine) >>= parse . words
   where
   parse ("load":dir:[]) =
@@ -38,6 +47,9 @@ runShell cwd = liftIO (putStr "> " >> hFlush stdout >> getLine) >>= parse . word
 
   printAndRepeat dir msg = liftIO (print msg) >> runShell dir
 
+-- | Launch the backend service and load initial configurations
+--   from the default directory.
+--   Will only terminate after a quit command has been given.
 main :: IO ()
 main = PL.withLayer backendPort $ C.withConfiguration $ do
   confs <- C.loadConfigurations defaultDir

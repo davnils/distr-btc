@@ -1,3 +1,10 @@
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Test.TestProxyLayer
+--
+-- Test verifying that the proxy layer operates correctly.
+-- This includes initialization, new proxy nodes, and shutdown.
+
 module Main where
 
 import Control.Monad

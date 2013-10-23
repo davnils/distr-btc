@@ -1,3 +1,10 @@
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Proxy.Main
+--
+-- Main entry point for the proxy node.
+-- Initiates a connection to the default backend node repeatedly.
+
 module Main where
 
 import OpenSSL (withOpenSSL)

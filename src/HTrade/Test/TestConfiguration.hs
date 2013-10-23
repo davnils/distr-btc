@@ -1,6 +1,12 @@
 {-# Language OverloadedStrings #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 
+--------------------------------------------------------------------
+-- |
+-- Module: HTrade.Test.TestConfiguration
+--
+-- Test verifying the functionality of configuration parsing and loading.
+
 module Main where
 
 import Control.Applicative ((<$>), (<*>))
