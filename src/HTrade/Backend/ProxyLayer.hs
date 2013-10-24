@@ -242,7 +242,7 @@ removeNode addr = R.ask >>= \threadState -> liftBase . STM.atomically $ do
   entry <- M.lookup addr <$> STM.readTVar threadState
   STM.modifyTVar' threadState $ M.delete addr
   case entry of
-    Just chan -> STM.always $ P.send chan Nothing
+    Just chan -> P.send chan Nothing >>= STM.check
     Nothing -> return ()
 
 -- | Maps a function over the set of connected proxies.

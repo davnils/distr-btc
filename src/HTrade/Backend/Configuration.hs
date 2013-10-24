@@ -24,6 +24,7 @@ import           Control.Applicative             (Applicative, (<$>))
 import qualified Control.Concurrent.Async.Lifted as C
 import qualified Control.Error                   as E
 import           Control.Monad                   (forM, forM_, guard, liftM, liftM2, liftM5, void)
+import qualified Control.Monad.STM               as P
 import           Control.Monad.Trans             (lift, liftIO, MonadIO, MonadTrans)
 import           Control.Monad.Trans.Control     (MonadBaseControl)
 import qualified Control.Monad.State             as S
@@ -69,16 +70,15 @@ withConfiguration routine = liftM fst $ S.runStateT (runConfigMT routine) M.empt
 --   Returns a list of market identifers updated (loaded or refreshed) and any
 --   invalid configuration files.
 --
---   TODO: Handle exceptions
 loadConfigurations
   :: (Functor m, MonadBaseControl IO m, MonadIO m)
   => FilePath
   -> MConfigT (PL.MProxyT m) (Maybe ([MarketIdentifier], [FilePath]))
 loadConfigurations dir = E.runMaybeT $ do
-  liftIO (D.doesDirectoryExist dir) >>= guard
-  files <- filter (\file -> not $ L.isPrefixOf "." file) <$> liftIO (D.getDirectoryContents dir)
-  let withDirPrefix = map (\file -> dir ++ "/" ++ file) files
-  parsed <- zip files <$> liftIO (mapM parseConfigurationFile withDirPrefix)
+  lift' (D.doesDirectoryExist dir) >>= guard
+  files <- filter (not . L.isPrefixOf ".") <$> lift' (D.getDirectoryContents dir)
+  let withDirPrefix = map ((dir ++ "/") ++) files
+  parsed <- zip files <$> lift' (mapM parseConfigurationFile withDirPrefix)
 
   let (failedFiles, parsedConfs) = partitionParsed parsed ([], [])
   let loadedIdentifiers = map _marketIdentifier parsedConfs
@@ -93,27 +93,27 @@ loadConfigurations dir = E.runMaybeT $ do
   -- Remove entries that don't exist anymore
   void . withThreads remove $ \threadMap market -> do
     let Just chan = M.lookup market threadMap
-    -- TODO: Handle failure
-    liftIO . P.atomically $ P.send chan Shutdown
+    lift' . P.atomically $ P.send chan Shutdown >>= P.check
     S.modify $ M.delete market
 
   -- Create new threads
   void . withThreads new $ \_ conf -> do
-    (output, input) <- liftIO $ P.spawn P.Single
+    (output, input) <- lift' $ P.spawn P.Single
     void . lift . lift . C.async $ marketThread input
-    -- TODO: Handle failure
-    liftIO . P.atomically . P.send output $ LoadConfiguration conf
+    lift' . P.atomically $ P.send output (LoadConfiguration conf) >>= P.check
     S.modify $ M.insert (_marketIdentifier conf) output
 
   -- Update existing threads
   void . withThreads updated $ \threadMap conf -> do
     let Just chan = M.lookup (_marketIdentifier conf) threadMap
-    liftIO . P.atomically . P.send chan $ LoadConfiguration conf
+    lift' . P.atomically $ P.send chan (LoadConfiguration conf) >>= P.check
 
   -- Return affected markets and paths with invalid configurations 
   return (loadedIdentifiers, failedFiles)
 
   where
+  lift' = E.hushT . E.syncIO
+
   partitionParsed [] acc = acc
   partitionParsed (e:t) (acc1, acc2) = case snd e of
     Nothing -> partitionParsed t (fst e : acc1, acc2)
@@ -157,7 +157,7 @@ terminateLoadedMarkets
 terminateLoadedMarkets = do
   channels <- liftM M.elems S.get
   forM_ channels $ \out ->
-    liftIO . P.atomically $ P.send out Shutdown
+    liftIO . P.atomically $ P.send out Shutdown >>= P.check
   S.put M.empty
 
 -- | Retrieve list of all currently loaded markets (based on snapshot).
