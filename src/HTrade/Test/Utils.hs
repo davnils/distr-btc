@@ -9,7 +9,8 @@ module HTrade.Test.Utils where
 import           Control.Applicative             ((<$>))
 import           Control.Concurrent              (threadDelay)
 import qualified Control.Concurrent.Async        as C
-import           Control.Monad                   (forM, guard, when)
+import qualified Control.Error                   as E
+import           Control.Monad                   (forever, forM, guard, void, when)
 import           Control.Monad.Trans             (lift, liftIO)
 import           Control.Monad.Trans.Maybe       (runMaybeT)
 import qualified Data.Maybe                      as MB
@@ -53,9 +54,9 @@ withQuickCheck f = do
 withLayers poolSize f = PL.withLayer testPort . fmap MB.isJust . runMaybeT $ do
   -- establish proxy nodes
   pool <- liftIO $ forM [1..poolSize] $
-    \_ -> C.async (P.runWorker "127.0.0.1" testPort)
+    \_ -> C.async (forever . void . E.runEitherT . E.syncIO $ P.runWorker "127.0.0.1" testPort)
   liftIO . putStrLn $
-    "[*] Pool with " ++ show testPort ++ " proxy nodes established."
+    "[*] Pool with " ++ show poolSize ++ " proxy nodes established."
 
   -- wait for full connectivity
   let waitLoop = do
