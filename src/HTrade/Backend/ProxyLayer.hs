@@ -32,7 +32,8 @@ import           Control.Applicative             ((<$>), Applicative)
 import qualified Control.Concurrent.Async        as C
 import           Control.Concurrent              (threadDelay)
 import qualified Control.Concurrent.STM          as STM
-import           Control.Monad                   (forever, join, liftM, void)
+import qualified Control.Error                   as E
+import           Control.Monad                   (forever, join, liftM, void, when)
 import           Control.Monad.Base              (liftBase, liftBaseDefault, MonadBase)
 import           Control.Monad.Trans             (liftIO, MonadIO, MonadTrans)
 import qualified Control.Monad.Trans.Control     as TC
@@ -97,15 +98,11 @@ instance TC.MonadBaseControl b m => TC.MonadBaseControl b (MProxyT m) where
 readyLimit :: Int
 readyLimit = 1
 
--- | Default timeout used by proxy layer queries, when not otherwise specified.
-defaultTimeout :: MicroSeconds
-defaultTimeout = 1000000
-
 -- | Proxy timeout value which defines internal allowance between backend
 --   and proxy layer. Any requests surpassing this limit will be redirected
 --   to another proxy node or considered unavailable.
 proxyTimeout :: MicroSeconds
-proxyTimeout = 10000000
+proxyTimeout = seconds 5
 
 -- | Internal delay after backend has been established.
 listenDelay :: MicroSeconds
@@ -113,7 +110,7 @@ listenDelay = 500000
 
 -- | Maximum number of proxy queries before result is considered unavailable.
 maxProbes :: Int
-maxProbes = 10
+maxProbes = 4
 
 -- | Main entry point when interfacing with the proxy layer.
 --   Accepts a computation to be evaluated over the proxy transformer.
@@ -182,8 +179,8 @@ saveResponse input = forever $ do
   output <- liftM join . liftIO . STM.atomically . P.recv $ input
   case output of
     Nothing -> return ()
-    Just (_, output') -> do
-      void . liftIO . STM.atomically $ STM.check <$> P.send output' (Just reply)
+    Just (_, output') ->
+      liftIO . STM.atomically $ P.send output' (Just reply) >>= STM.check
 
 -- | Execute a query on the proxy layer.
 --   If no proxy node is given then a random sample is taken from the pool.
@@ -192,15 +189,13 @@ saveResponse input = forever $ do
 query
   :: MonadBase IO m
   => Maybe WorkerIdentifier
-  -> Maybe MicroSeconds
+  -> Maybe Int
   -> ProxyRequest
   -> MProxyT m (Maybe ProxyResponse)
-query addr' timeout' req = do
-  let timeout'' = fromMaybe defaultTimeout timeout' -- TODO: USE!
-  let getWorker = fromMaybe sampleNode $ return . Just <$> addr'
-
+query addr probes req = do
+  let getWorker = maybe sampleNode (return . Just) addr
   -- iterate until a response is retrieved or the limit is reached
-  sendProbe getWorker maxProbes
+  sendProbe getWorker $ fromMaybe maxProbes probes
 
   where
   -- retrieve target proxy node and run query, may fail with Nothing
@@ -212,12 +207,21 @@ query addr' timeout' req = do
       res        -> return res
 
   -- run a query on the given address, may fail with Nothing
-  runQuery addr = do
-    thread <- R.ask >>= liftBase . STM.atomically . liftM (M.lookup addr) . STM.readTVar
-    (localInput, localOutput) <- liftBase $ P.spawn P.Single
-    onJust thread $ \remote -> liftBase $ do
-      void . STM.atomically $ STM.check <$> P.send remote (Just (req, localInput))
-      STM.atomically . liftM join $ P.recv localOutput
+  lift' = liftBase . E.runMaybeT . E.hushT . E.syncIO
+  runQuery addr' = R.ask >>= \threadVar -> fmap join . lift' $ do
+    thread <- STM.atomically . liftM (M.lookup addr') $ STM.readTVar threadVar
+    (localInput, localOutput) <- P.spawn P.Single
+
+    -- transmit request and await reply if the address was found
+    onJust thread $ \remote -> do
+      res <- timeout (fromIntegral proxyTimeout) $ do
+        STM.atomically $ P.send remote (Just (req, localInput)) >>= STM.check
+        STM.atomically $ join <$> P.recv localOutput
+
+      -- GC mailbox if proxy node didn't respond
+      when (E.isNothing res) P.performGC
+
+      return $ join res
 
 -- | Check if the number of connected proxy nodes have reached the critical limit.
 --   It is suitable to call this function repeatedely until success during

@@ -62,14 +62,13 @@ data MarketState m
     }
 
 -- | Default market timeout used to define when a market is unreachable. 
+--   Should be set with the proxy timeout limit in mind.
 defaultMarketTimeout :: MicroSeconds
-defaultMarketTimeout = seconds 5
+defaultMarketTimeout = seconds 4
 
 -- | Number of trades stored clustered on a single row in Cassandra.
 tradeGroupSize :: Int64
 tradeGroupSize = 10000
-
--- TODO: Check relation between query-timeout and marketreq-timeout
 
 -- | Worker function executed in a separate thread.
 --   Takes as input a configuration and will repeatedly poll the market
@@ -84,7 +83,7 @@ worker conf pool = forever $ do
     DB.executeRow DB.QUORUM lastTradeQuery market
 
   preFetchTime <- liftBase getCurrentTime
-  res <- PL.query Nothing (Just defaultMarketTimeout) (marketReq lastTrade)
+  res <- PL.query Nothing Nothing (marketReq lastTrade)
   case res of
     Nothing -> delay $ seconds 1
     Just reply -> do
