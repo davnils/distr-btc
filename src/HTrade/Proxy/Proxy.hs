@@ -106,8 +106,8 @@ handleRequest (MarketRequest site path trade order timeout' tradeID) = do
 
   market <- lift $ getMarket
     site
-    (prependPath trade)
-    (prependPath order <> "?" <> tradeIDParam <> "=" <> B.pack (show tradeID))
+    (prependPath trade <> "?" <> tradeIDParam <> "=" <> B.pack (show tradeID))
+    (prependPath order)
     timeout'
 
   case market of

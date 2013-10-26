@@ -58,4 +58,4 @@ main = PL.withLayer backendPort $ C.withConfiguration $ do
   liftIO $ putStrLn "Terminating"
 
   where
-  defaultDir = "data/configurations/test"
+  defaultDir = "data/configurations"
