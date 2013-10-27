@@ -1,20 +1,30 @@
-# htrade - bitcoin trading platform
+# Distributed BTC market fetching
+
+This project is described in [this blog post](http://davnils.github.io/#distributed_btc_markets).
+
+## Getting started
+
+In order to use this project you need to:
+
+* Setup a Cassandra cluster with a configured keyspace
+* Setup all tables using htrade-admin
+* Write configuration files for all markets
+* Launch backend
+* Launch one or several proxy nodes
 
 ## Subprojects
 
-#### htrade-backend
+#### htrade-admin
+Administration tool used to initialize and destroy Cassandra tables.
 
+#### Shared
 Backend services interacting with database layer and proxy layer.
 
 #### htrade-proxy
-
 Proxy layer interacting with backend layer and public markets.
 
-#### Other
+#### Shared
+Functionality shared between the different subprojects.
 
-Contains a shared library with various funtionality.
-
-## Progress
-
-Currently contains an almost complete implementation of htrade-proxy but is quite lacking on the htrade-backend.
-A storage interface (or live-data-feed?) in the backend must also be implemented.
+#### Test
+Test suites covering most parts of the backend and proxy.
