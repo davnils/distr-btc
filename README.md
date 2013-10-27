@@ -17,7 +17,7 @@ In order to use this project you need to:
 #### htrade-admin
 Administration tool used to initialize and destroy Cassandra tables.
 
-#### Shared
+#### htrade-backend
 Backend services interacting with database layer and proxy layer.
 
 #### htrade-proxy
