@@ -10,11 +10,10 @@
 module Main where
 
 import           Control.Applicative             ((<$>), (<*>))
-import           Control.Monad                   (guard, liftM2, when)
+import           Control.Monad                   (guard, liftM2)
 import           Control.Monad.Trans             (lift, liftIO)
 import qualified Data.ByteString.Char8           as B
 import           Data.Char                       (isAscii, isAlphaNum)
-import           Data.Monoid                     ((<>))
 import qualified System.Directory                as D
 import           System.IO                       (hClose, hPutStr)
 import           System.IO.Temp                  (openTempFile)
@@ -45,23 +44,6 @@ instance Q.Arbitrary T.MarketConfiguration where
     <*> Q.arbitrary
     <*> Q.arbitrary
 
--- | Serialize a configuration to the configurator-format being used.
-showConfiguration :: T.MarketConfiguration -> String
-showConfiguration conf = unlines . map showRow $ 
-  [
-    ("name"       , s $ T._marketName $ T._marketIdentifier conf),
-    ("currency"   , s $ T._currency $ T._marketIdentifier conf),
-    ("host"       , s $ T._marketHost conf),
-    ("path"       , s $ T._marketPath conf),
-    ("trades"     , s $ T._marketTrades conf),
-    ("orderbook"  , s $ T._marketOrders conf),
-    ("interval"   , s $ T._marketInterval conf)
-  ]
-  where
-  s :: Show a => a -> String
-  s = show
-  showRow (key, val) = key <> " = " <> val
-
 -- | Generate a configuration, output it to a temporary file, 
 --   and verify that the parsed results are equal.
 verifyConfigurationParser :: IO Bool
@@ -79,13 +61,7 @@ verifyConfigurationParser = withQuickCheck $ \genConf -> Q.monadicIO $ do
 verifyConfigurationLoader :: IO Bool
 verifyConfigurationLoader = withLayers poolSize $ do
   -- setup temporary directory with a single configuration for testing
-  liftIO $ do
-  -- rewrite to withTempFile-idiom
-    exists <- D.doesDirectoryExist confDir
-    when exists $ D.removeDirectoryRecursive confDir
-    D.createDirectory confDir
-    (_, handle) <- openTempFile confDir filePattern
-    hPutStr handle (showConfiguration testConf) >> hClose handle
+  liftIO $ writeTempConf confDir filePattern testConf
 
   -- load the given configuration
   liftIO $ putStrLn "[*] Loading test configuration"
