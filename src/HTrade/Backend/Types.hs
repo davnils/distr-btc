@@ -122,12 +122,17 @@ instance A.FromJSON MarketOrderBook where
 
   parseJSON _ = mzero
 
-instance A.FromJSON Trades where
-  parseJSON (A.Array o) = Trades . toUTC <$> V.mapM A.parseJSON o
-    where
-    toUTC = V.toList . V.map convertToUTC
-    convertToUTC (a1, a2, a3, a4) = TradeEntry (posixSecondsToUTCTime a1) a2 a3 a4
+instance A.FromJSON TradeEntry where
+  parseJSON (A.Object o) = TradeEntry
+    <$> (fmap posixSecondsToUTCTime $ o .: "date")
+    <*> o .: "price"
+    <*> o .: "amount"
+    <*> o .: "tid"
 
+  parseJSON _ = mzero
+
+instance A.FromJSON Trades where
+  parseJSON (A.Array o) = Trades . V.toList <$> V.mapM A.parseJSON o
   parseJSON _ = mzero
 
 instance A.FromJSON NominalDiffTime where
