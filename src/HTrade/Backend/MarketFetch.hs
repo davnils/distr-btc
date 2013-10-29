@@ -89,7 +89,7 @@ worker conf pool = forever $ do
     Just reply -> do
       parseReply reply
       timeDiff <- (`T.diffUTCTime` preFetchTime) <$> liftBase getCurrentTime
-      let sleep = max (fromIntegral (_marketInterval conf) - (timeDiff * 10^^6)) 0.0
+      let sleep = max (fromIntegral (_marketInterval conf) - (timeDiff * 10^^(6 :: Int))) 0.0
       delay $ round sleep
 
   where

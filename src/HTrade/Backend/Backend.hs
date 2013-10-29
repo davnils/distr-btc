@@ -21,6 +21,9 @@ import qualified HTrade.Backend.Types            as PL
 import           HTrade.Shared.Utils             (backendPort)
 
 -- | Read, parse, and interpret a command from the given current directory.
+runShell
+  :: String
+  -> C.MConfigT (PL.MProxyT IO) ()
 runShell cwd = liftIO (putStr "> " >> hFlush stdout >> getLine) >>= parse . words
   where
   parse ("load":dir:[]) =

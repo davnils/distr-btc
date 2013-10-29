@@ -120,7 +120,7 @@ handleRequest (MarketRequest site path trade order timeout' tradeID) = do
 
 handleRequest StatusRequest = buildStatusReply
 
-handleRequest (ReloadRequest performUpgrade reboot) = do
+handleRequest (ReloadRequest _ _) = do
   -- TODO: Implement upgrade and reboot actions
   return AcknowledgementReply
 
