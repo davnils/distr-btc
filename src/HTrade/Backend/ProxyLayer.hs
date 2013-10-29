@@ -102,7 +102,7 @@ readyLimit = 1
 --   and proxy layer. Any requests surpassing this limit will be redirected
 --   to another proxy node or considered unavailable.
 proxyTimeout :: MicroSeconds
-proxyTimeout = seconds 5
+proxyTimeout = seconds 15
 
 -- | Internal delay after backend has been established.
 listenDelay :: MicroSeconds

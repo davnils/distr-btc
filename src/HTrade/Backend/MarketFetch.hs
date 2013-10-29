@@ -64,7 +64,7 @@ data MarketState m
 -- | Default market timeout used to define when a market is unreachable. 
 --   Should be set with the proxy timeout limit in mind.
 defaultMarketTimeout :: MicroSeconds
-defaultMarketTimeout = seconds 4
+defaultMarketTimeout = seconds 12
 
 -- | Number of trades stored clustered on a single row in Cassandra.
 tradeGroupSize :: Int64
