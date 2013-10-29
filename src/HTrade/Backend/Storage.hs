@@ -9,10 +9,44 @@
 
 module HTrade.Backend.Storage where
 
+import qualified Data.Text                       as T
+import           Data.Monoid                     ((<>))
 import qualified Database.Cassandra.CQL          as DB
-import           Data.Text                       (Text)
 import           Network                         (HostName)
 import           Network.Socket                  (ServiceName)
+
+-- | Field in Cassandra table.
+type Field = T.Text
+
+-- | Type of field in Cassandra table.
+type CassandraType = T.Text
+
+-- | Cassandra table in the market keyspace.
+data CassandraTable
+ = CassandraTable                         -- ^ Describe a table.
+ {
+   _tableName :: T.Text,                  -- ^ Name of table.
+   _schema :: [(Field, CassandraType)],   -- ^ Schema as value-type tuples.
+   _schemaProperties :: T.Text            -- ^ Additional suffix used by create table.
+ }
+
+-- | Retrieve all fields stored in a table.
+cassandraTableFields :: CassandraTable -> [Field]
+cassandraTableFields = filter (/= "primary key") . map fst . _schema
+
+-- | Retrieve all fields in a table as a string wrapped with parentheses.
+tableFieldsStr :: CassandraTable -> T.Text
+tableFieldsStr = flatten . cassandraTableFields
+  where
+  flatten str = "(" <> T.intercalate ", " str <> ")"
+
+-- | Build a schema string, as used by the create table command, from a table description.
+buildCassandraSchema :: CassandraTable -> T.Text
+buildCassandraSchema s = "(" <> T.intercalate ", " schemaStr <> ")" <> suffix (_schemaProperties s)
+  where
+  schemaStr = map (\(field, fieldType) -> field <> " " <> fieldType) $ _schema s
+  suffix "" = ""
+  suffix str = " " <> str
 
 -- | Cassandra host to be used.
 cassandraHost :: HostName
@@ -26,89 +60,72 @@ cassandraPort = "9042"
 marketKeyspace :: DB.Keyspace
 marketKeyspace = "market_data"
 
--- | Name of table storing raw content retrieved from market web servers.
-marketRawTable :: Text
-marketRawTable = "market_raw"
+-- | Table storing raw content retrieved from market web servers.
+marketRawTable :: CassandraTable
+marketRawTable = CassandraTable
+  "market_raw"
+  [("id", "uuid"),
+   ("market", "ascii"),
+   ("retrieved", "timestamp"),
+   ("orderbook", "blob"),
+   ("trades", "blob"),
+   ("elapsed", "int"),
+   ("primary key", "(id)")]
+   ""
 
--- | Associated schema.
-marketRawDataSchema :: Text
-marketRawDataSchema  = "(\
-  \id uuid primary key,\
-  \market ascii,\
-  \retrieved timestamp,\
-  \orderbook blob,\
-  \trades blob,\
-  \elapsed int\
-\)"
+-- | Table storing order books retrieved from markets.
+marketOrderBookTable :: CassandraTable
+marketOrderBookTable = CassandraTable
+  "market_orders"
+  [("market", "ascii"),
+   ("day", "timestamp"),
+   ("retrieved", "timestamp"),
+   ("asks", "list<blob>"),
+   ("bids", "list<blob>"),
+   ("primary key", "((market, day), retrieved)")]
+   "with clustering order by (retrieved desc)"
 
--- | Name of table storing order books retrieved from markets.
-marketOrderBookTable :: Text
-marketOrderBookTable = "market_orders"
+-- | Table storing trades retrieved from markets.
+marketTradesTable :: CassandraTable
+marketTradesTable = CassandraTable
+  "market_trades"
+  [("market", "ascii"),
+   ("group", "bigint"),
+   ("trade", "bigint"),
+   ("time", "timestamp"),
+   ("price", "decimal"),
+   ("amount", "decimal"),
+   ("primary key", "((market, group), trade)")]
+  ""
 
--- | Associated schema.
-marketOrderBookSchema :: Text
-marketOrderBookSchema = "(\
-\  market ascii,\
-\  day timestamp,\
-\  retrieved timestamp,\
-\  asks list<blob>,\
-\  bids list<blob>,\
-\  primary key ((market, day), retrieved)\
-\) with clustering order by (retrieved desc)"
+-- | Table storing an identifier of the latest retrieved trade.
+marketLastTradeTable :: CassandraTable
+marketLastTradeTable = CassandraTable
+  "market_last_trade"
+  [("market", "ascii"),
+   ("trade", "bigint"),
+   ("time", "timestamp"),
+   ("primary key", "(market)")]
+  ""
 
--- | Name of table storing trades retrieved from markets.
-marketTradesTable :: Text
-marketTradesTable = "market_trades"
+-- | Table storing trade activity associated with a given day.
+marketTradesDayTable :: CassandraTable
+marketTradesDayTable = CassandraTable
+  "market_trades_day"
+  [("market", "ascii"),
+   ("day", "timestamp"),
+   ("first", "bigint"),
+   ("last", "bigint"),
+   ("primary key", "(market, day)")]
+  ""
 
--- | Associated schema.
-marketTradesSchema :: Text
-marketTradesSchema = "(\
-\  market ascii,\
-\  group bigint,\
-\  trade bigint,\
-\  time timestamp,\
-\  price decimal,\
-\  amount decimal,\
-\  primary key ((market, group), trade)\
-\)"
-
--- | Name of table storing an identifier of the latest retrieved trade.
-marketLastTradeTable :: Text
-marketLastTradeTable = "market_last_trade"
-
--- | Associated schema.
-marketLastTradeSchema :: Text
-marketLastTradeSchema = "(\
-\  market ascii,\
-\  trade bigint,\
-\  time timestamp,\
-\  primary key (market)\
-\)"
-
--- | Name of table storing trade activity associated with a given day.
-marketTradesDayTable :: Text
-marketTradesDayTable  = "market_trades_day"
-
--- | Associated schema.
-marketTradesDaySchema :: Text
-marketTradesDaySchema = "(\
-\  market ascii,\
-\  day timestamp,\
-\  first bigint,\
-\  last bigint,\
-\  primary key (market, day)\
-\)"
-
--- | Name of table storing monitored market status.
-marketStatusTable :: Text
-marketStatusTable = "market_status"
-
--- | Associated schema.
-marketStatusSchema :: Text
-marketStatusSchema = "(\
-\  market ascii,\
-\  day timestamp,\
-\  time timestamp,\
-\  status int,\
-\  primary key ((market, day), time)\
-\) with clustering order by (time desc)"
+-- | Table storing monitored market status.
+marketStatusTable :: CassandraTable
+marketStatusTable = CassandraTable
+  "market_status"
+  [("market", "ascii"),
+   ("day", "timestamp"),
+   ("time", "timestamp"),
+   ("status", "int"),
+   ("primary key", "((market, day), time)")]
+  "with clustering order by (time desc)"

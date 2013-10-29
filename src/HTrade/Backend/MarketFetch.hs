@@ -124,8 +124,8 @@ writeMarketStatus market status now =
     status
     )
 
-  statusQuery = "insert into " <> DB.marketStatusTable <>
-               " (market, day, time, status) values (?, ?, ?, ?)"
+  statusQuery = "insert into " <> DB._tableName DB.marketStatusTable
+             <> " (market, day, time, status) values (?, ?, ?, ?)"
 
 -- | Function executed when a market disconnect has been detected.
 marketDisconnect
@@ -177,11 +177,13 @@ handleReply pool market reply = liftBase . (>>= checkError) . E.runEitherT $ d
     writeMarketStatus (_marketIdentifier market) marketActive now
 
   where
-  rawQuery = "insert into " <> DB.marketRawTable <>
-             " (id, market, retrieved, orderbook, trades, elapsed) values (?, ?, ?, ?, ?, ?)"
+  rawQuery  =  "insert into " <> DB._tableName DB.marketRawTable
+            <> " " <> DB.tableFieldsStr DB.marketRawTable
+            <> " values (?, ?, ?, ?, ?, ?)"
 
-  orderQuery = "insert into " <> DB.marketOrderBookTable <>
-               " (market, day, retrieved, asks, bids) values (?, ?, ?, ?, ?)"
+  orderQuery = "insert into " <> DB._tableName DB.marketOrderBookTable
+            <> " " <> DB.tableFieldsStr DB.marketOrderBookTable
+            <> " values (?, ?, ?, ?, ?)"
 
   write query = DB.executeWrite DB.QUORUM (DB.query query)
 
@@ -231,10 +233,21 @@ processTrades market (Trades trades) = do
   processTrades market (Trades future)
 
   where
-  firstLastFetchQuery  = "select first from " <> DB.marketTradesDaySchema <> " where market=? and day=?"
-  updateFirstLastQuery = "insert into "       <> DB.marketTradesDaySchema <> " values (?, ?, ?, ?)"
-  updateLastTradeQuery = "insert into "       <> DB.marketLastTradeTable  <> " values (?, ?, ?)"
-  tradeInsertQuery     = "insert into "       <> DB.marketTradesTable     <> " values (?, ?, ?, ?, ?, ?)"
+  firstLastFetchQuery  =  "select first from "
+                       <> DB._tableName DB.marketTradesDayTable
+                       <> " where market=? and day=?"
+  updateFirstLastQuery =  "insert into "
+                       <> DB._tableName DB.marketTradesDayTable
+                       <> " " <> DB.tableFieldsStr DB.marketTradesDayTable
+                       <> " values (?, ?, ?, ?)"
+  updateLastTradeQuery =  "insert into "
+                       <> DB._tableName DB.marketLastTradeTable
+                       <> " " <> DB.tableFieldsStr DB.marketLastTradeTable
+                       <> " values (?, ?, ?)"
+  tradeInsertQuery     =  "insert into "
+                       <> DB._tableName DB.marketTradesTable
+                       <> " " <> DB.tableFieldsStr DB.marketTradesTable
+                       <> " values (?, ?, ?, ?, ?, ?)"
 
 -- | Separate thread which corresponds to a single market.
 --   Handles updated configurations and other external requests.

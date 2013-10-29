@@ -17,33 +17,33 @@ module Main where
 import           Control.Monad                   (forM_)
 import qualified Database.Cassandra.CQL          as DB
 import           Data.Monoid                     ((<>))
-import           Data.Text                       (Text)
 import           System.Environment              (getArgs)
 
 import           HTrade.Backend.Storage
 
 -- | All tables adminstrated by this tool.
---   Pairs of table name and the associated schema.
 --   Assumed to exist within the default key space.
-tables :: [(Text, Text)]
+tables :: [CassandraTable]
 tables =
   [
-    (marketRawTable, marketRawDataSchema),
-    (marketOrderBookTable, marketOrderBookSchema),
-    (marketTradesTable, marketTradesSchema),
-    (marketLastTradeTable, marketLastTradeSchema),
-    (marketTradesDayTable, marketTradesDaySchema),
-    (marketStatusTable, marketStatusSchema)
+    marketRawTable,
+    marketOrderBookTable,
+    marketTradesTable,
+    marketLastTradeTable,
+    marketTradesDayTable,
+    marketStatusTable
   ]
 
 -- | Create all schemas, will fail if any already exist.
 createSchema :: DB.Cas ()
-createSchema = forM_ tables $ \(table, schema) -> 
-  DB.executeSchema DB.ALL (DB.query $ "create table " <> table <> " " <> schema) ()
+createSchema = forM_ tables $ \table -> do
+  let schema = buildCassandraSchema table
+  DB.executeSchema DB.ALL (DB.query $ "create table " <> _tableName table <> " " <> schema) ()
 
 -- | Drop all schemas, will fail if any do not exist.
 dropSchema :: DB.Cas ()
-dropSchema =  forM_ tables $ \(table, _) -> DB.executeSchema DB.ALL (DB.query $ "drop table " <> table) ()
+dropSchema =  forM_ tables $ \table ->
+  DB.executeSchema DB.ALL (DB.query $ "drop table " <> _tableName table) ()
 
 -- | Evaluate some Cassandra action over the default pool.
 runAction :: DB.Cas a -> IO a
