@@ -217,11 +217,11 @@ processTrades market (Trades trades) = do
       last'  = _transactionID lastTrade
 
   _ <- DB.executeWrite DB.QUORUM (DB.query updateFirstLastQuery)
-    (_marketName market, processDayZero, first', last')
+    (_marketName market, processDayZero, first', _transactionID $ last current)
 
   -- Write all of the trades at the lowest consistency level
   forM_ current $ \t -> do
-    let group     = mod (_transactionID t) tradeGroupSize
+    let group     = quot (_transactionID t) tradeGroupSize
         insertion = (_marketName market, group, _transactionID t, _time t, _price t, _amount t)
     DB.executeWrite DB.ONE (DB.query tradeInsertQuery) insertion
 
